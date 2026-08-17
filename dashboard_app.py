@@ -47,6 +47,7 @@ st.markdown("""
             border-radius: 0.5rem;
             margin-bottom: 1rem;
             font-weight: 500;
+            border-left: 5px solid #b91c1c;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -60,17 +61,24 @@ except NameError:
 TEMPLATE_FILENAME = "@2.daily check aug26 ทุกวัน.XLSX"
 TEMPLATE_PATH = os.path.join(current_dir, TEMPLATE_FILENAME)
 
-# Load background template data
+# Load background template data (เพิ่มการอ่าน Sheet 'fo')
 @st.cache_data
 def load_template_data(path):
     if not os.path.exists(path):
-        return None, None
+        return None, None, None
     df_check = pd.read_excel(path, sheet_name="check dali wipday", header=2)
     df_check = df_check.dropna(subset=['Material'])
     df_ord = pd.read_excel(path, sheet_name="ord", header=0)
-    return df_check, df_ord
+    
+    # อ่าน Sheet fo เพิ่มเติม
+    try:
+        df_fo = pd.read_excel(path, sheet_name="fo", header=0)
+    except:
+        df_fo = pd.DataFrame() # กันเหนียวเผื่อไม่มีชีทนี้
+        
+    return df_check, df_ord, df_fo
 
-df_check_bg, df_ord_bg = load_template_data(TEMPLATE_PATH)
+df_check_bg, df_ord_bg, df_fo_bg = load_template_data(TEMPLATE_PATH)
 
 # ฟังก์ชันสำหรับแปลง DataFrame เป็น Excel เพื่อให้ดาวน์โหลด
 @st.cache_data
@@ -124,6 +132,7 @@ if db_file:
     with st.spinner("กำลังคำนวณข้อมูลเบื้องหลัง..."):
         df_check = df_check_bg.copy()
         df_ord = df_ord_bg.copy()
+        df_fo = df_fo_bg.copy()
         
         # โหลดไฟล์ Database
         xls_db = pd.ExcelFile(db_file)
@@ -210,7 +219,33 @@ if db_file:
         total_short_parts = len(df_short)
         total_orders_short = int(df_short['Orders'].sum())
 
-        # --- จับคู่สถานะการผลิต (ย้ายมาคำนวณก่อนเพื่อให้กราฟดึงไปใช้ได้) ---
+        # --- ตรวจสอบ Part หลุดแผน (มีใน FO แต่ไม่มีใน Check Dali WIP Day) ---
+        if not df_fo.empty and 'Material' in df_fo.columns:
+            fo_materials = df_fo['Material'].dropna().astype(str).str.strip().unique()
+            check_materials = df_check['Material'].dropna().astype(str).str.strip().unique()
+            
+            missing_materials = [m for m in fo_materials if m not in check_materials and m != 'nan' and m != '']
+            missing_parts_count = len(missing_materials)
+            
+            if missing_parts_count > 0:
+                st.markdown(f'''
+                    <div class="alert-box">
+                        ⚠️ <b>แจ้งเตือนความเสี่ยงหลุดแผน:</b> พบ {missing_parts_count} Part ที่มีใน Sheet <b>"fo"</b> แต่ไม่ได้นำมาคำนวณใน <b>"check dali wipday"</b>
+                    </div>
+                ''', unsafe_allow_html=True)
+                
+                with st.expander("👉 คลิกเพื่อดูรายการ Part ที่ตกหล่น"):
+                    # พยายามดึง Description มาโชว์ด้วยถ้ามี
+                    cols_to_show = ['Material']
+                    if 'Description' in df_fo.columns: cols_to_show.append('Description')
+                    
+                    missing_df = df_fo[df_fo['Material'].astype(str).str.strip().isin(missing_materials)][cols_to_show]
+                    missing_df = missing_df.drop_duplicates(subset=['Material'])
+                    missing_df.columns = ['Part No. ที่ตกหล่น', 'รายละเอียด (Description)'][:len(cols_to_show)]
+                    
+                    st.dataframe(missing_df, use_container_width=True, hide_index=True)
+
+        # --- จับคู่สถานะการผลิต ---
         status_list = []
         machine_list = []
         for comp, mat in zip(df_short['Component'], df_short['Material']):
@@ -266,7 +301,6 @@ if db_file:
         col_chart, col_table = st.columns([1, 2.5]) 
         
         with col_chart:
-            # 1. กราฟแยกตามแผนก
             st.markdown("**แยกตามแผนก (SCHE)**")
             if not df_short.empty:
                 chart_data_sche = df_short.groupby('SCHE').size().reset_index(name='count')
@@ -279,11 +313,9 @@ if db_file:
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                # 2. กราฟเปรียบเทียบสถานะการผลิต
                 st.markdown("**สถานะการผลิต**")
                 chart_data_status = df_short.groupby('status การผลิต').size().reset_index(name='count')
                 
-                # กำหนดสี: เขียว=ผลิต, แดง=ไม่ได้ผลิต
                 color_map = {'ผลิต': '#10b981', 'ไม่ได้ผลิต': '#ef4444'}
                 
                 fig_status = px.pie(chart_data_status, values='count', names='status การผลิต', hole=0.5,
@@ -301,7 +333,6 @@ if db_file:
             with c_header:
                 st.markdown("**รายการ Part ที่ติดลบ (Short Date) หรือ WIP < 7 วัน**")
             
-            # เตรียมข้อมูลสำหรับแสดงผล (เพิ่มคอลัมน์ Material)
             display_df = pd.DataFrame({
                 'SCHE': df_short['SCHE'],
                 'Part No.': df_short['Component'],
@@ -317,7 +348,6 @@ if db_file:
             })
             
             with c_btn:
-                # ปุ่มดาวน์โหลด Excel
                 excel_data = convert_df_to_excel(display_df)
                 st.download_button(
                     label="📥 ดาวน์โหลดไฟล์ Excel",
@@ -327,7 +357,6 @@ if db_file:
                     use_container_width=True
                 )
             
-            # ฟังก์ชันปรับสีตัวเลข
             def color_balance(val):
                 color = 'red' if isinstance(val, (int, float)) and val < 0 else 'black'
                 return f'color: {color}'
@@ -336,7 +365,6 @@ if db_file:
                 color = 'red' if isinstance(val, (int, float)) and val < 7 else 'black'
                 return f'color: {color}'
             
-            # จัด Format ทศนิยม 2 ตำแหน่งให้ WIP Day
             format_dict = {'WIP Day': '{:.2f}'}
             
             try:
@@ -348,7 +376,6 @@ if db_file:
                                             .applymap(color_wip, subset=['WIP Day'])\
                                             .format(format_dict)
             
-            # คำนวณความสูงให้แสดงผลได้เต็ม
             table_height = (len(display_df) + 1) * 35 + 10
             if table_height < 150: 
                 table_height = 150
