@@ -143,23 +143,17 @@ if db_file:
             if len(df_pro.columns) >= 3:
                 df_pro[0] = df_pro[0].astype(str).str.strip()
                 
-                # --- ฟังก์ชันสกัดชื่อเครื่องจักร (แก้ไขใหม่) ---
                 def extract_machine(val):
                     if pd.isna(val): return ""
                     val_str = str(val).strip()
                     if val_str == '' or val_str.lower() == 'nan': return ""
-                    
                     parts = val_str.split('/')
-                    # ดึงข้อมูลเฉพาะที่มีเครื่องหมาย / เพื่อป้องกันข้อความขยะเช่น "ยกเลิก..."
                     if len(parts) > 1:
                         return parts[1].strip()
-                    return "" # ถ้าไม่เข้าแพทเทิร์นให้ส่งค่าว่างกลับไป (ถือว่าไม่ได้ผลิตเครื่องจักร)
+                    return ""
                 
                 df_pro['extracted_machine'] = df_pro[2].apply(extract_machine)
-                
-                # ตัดแถวที่เครื่องจักรว่างเปล่าออก (พวกที่ไม่ได้ใช้เครื่องจักรจริงๆ)
                 df_pro_valid = df_pro[df_pro['extracted_machine'] != ""]
-                
                 df_pro_unique = df_pro_valid.drop_duplicates(subset=[0, 'extracted_machine'])
                 machine_mapping = df_pro_unique.groupby(0)['extracted_machine'].apply(
                     lambda x: ', '.join(filter(None, x))
@@ -216,6 +210,29 @@ if db_file:
         total_short_parts = len(df_short)
         total_orders_short = int(df_short['Orders'].sum())
 
+        # --- จับคู่สถานะการผลิต (ย้ายมาคำนวณก่อนเพื่อให้กราฟดึงไปใช้ได้) ---
+        status_list = []
+        machine_list = []
+        for comp, mat in zip(df_short['Component'], df_short['Material']):
+            comp_str = str(comp).strip() if pd.notna(comp) else ""
+            mat_str = str(mat).strip() if pd.notna(mat) else ""
+            
+            if comp_str.endswith('.0'): comp_str = comp_str[:-2]
+            if mat_str.endswith('.0'): mat_str = mat_str[:-2]
+            
+            if comp_str != "" and comp_str in machine_mapping:
+                status_list.append('ผลิต')
+                machine_list.append(machine_mapping[comp_str])
+            elif mat_str != "" and mat_str in machine_mapping:
+                status_list.append('ผลิต')
+                machine_list.append(machine_mapping[mat_str])
+            else:
+                status_list.append('ไม่ได้ผลิต')
+                machine_list.append('-')
+                
+        df_short['status การผลิต'] = status_list
+        df_short['เครื่องจักร'] = machine_list
+
         # ---- สร้างการ์ดแสดงผล ----
         col_m1, col_m2, col_m3 = st.columns(3)
         target_str = target_date_dt.strftime('%d/%m/%Y')
@@ -249,15 +266,33 @@ if db_file:
         col_chart, col_table = st.columns([1, 2.5]) 
         
         with col_chart:
+            # 1. กราฟแยกตามแผนก
             st.markdown("**แยกตามแผนก (SCHE)**")
             if not df_short.empty:
-                chart_data = df_short.groupby('SCHE').size().reset_index(name='count')
-                fig = px.pie(chart_data, values='count', names='SCHE', hole=0.5,
+                chart_data_sche = df_short.groupby('SCHE').size().reset_index(name='count')
+                fig_sche = px.pie(chart_data_sche, values='count', names='SCHE', hole=0.5,
                              color_discrete_sequence=px.colors.qualitative.Pastel)
-                fig.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-                                  margin=dict(t=0, b=0, l=0, r=0), height=400)
-                fig.update_traces(textposition='none')
-                st.plotly_chart(fig, use_container_width=True)
+                fig_sche.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
+                                  margin=dict(t=0, b=0, l=0, r=0), height=300)
+                fig_sche.update_traces(textposition='none')
+                st.plotly_chart(fig_sche, use_container_width=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # 2. กราฟเปรียบเทียบสถานะการผลิต
+                st.markdown("**สถานะการผลิต**")
+                chart_data_status = df_short.groupby('status การผลิต').size().reset_index(name='count')
+                
+                # กำหนดสี: เขียว=ผลิต, แดง=ไม่ได้ผลิต
+                color_map = {'ผลิต': '#10b981', 'ไม่ได้ผลิต': '#ef4444'}
+                
+                fig_status = px.pie(chart_data_status, values='count', names='status การผลิต', hole=0.5,
+                                    color='status การผลิต', color_discrete_map=color_map)
+                fig_status.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
+                                  margin=dict(t=0, b=0, l=0, r=0), height=300)
+                fig_status.update_traces(textposition='none')
+                st.plotly_chart(fig_status, use_container_width=True)
+                
             else:
                 st.info("ไม่มีรายการที่ Short หรือ WIP ต่ำกว่ากำหนด")
 
@@ -266,38 +301,19 @@ if db_file:
             with c_header:
                 st.markdown("**รายการ Part ที่ติดลบ (Short Date) หรือ WIP < 7 วัน**")
             
-            # --- จับคู่สถานะการผลิต ---
-            status_list = []
-            machine_list = []
-            for comp, mat in zip(df_short['Component'], df_short['Material']):
-                comp_str = str(comp).strip() if pd.notna(comp) else ""
-                mat_str = str(mat).strip() if pd.notna(mat) else ""
-                
-                if comp_str.endswith('.0'): comp_str = comp_str[:-2]
-                if mat_str.endswith('.0'): mat_str = mat_str[:-2]
-                
-                if comp_str != "" and comp_str in machine_mapping:
-                    status_list.append('ผลิต')
-                    machine_list.append(machine_mapping[comp_str])
-                elif mat_str != "" and mat_str in machine_mapping:
-                    status_list.append('ผลิต')
-                    machine_list.append(machine_mapping[mat_str])
-                else:
-                    status_list.append('ไม่ได้ผลิต')
-                    machine_list.append('-')
-            
-            # เตรียมข้อมูลสำหรับแสดงผล
+            # เตรียมข้อมูลสำหรับแสดงผล (เพิ่มคอลัมน์ Material)
             display_df = pd.DataFrame({
                 'SCHE': df_short['SCHE'],
                 'Part No.': df_short['Component'],
+                'Material': df_short['Material'],
                 'WIP+FG': df_short['Total'].astype(int),
                 'WIP Day': df_short['wip days value'],
                 'Orders': df_short['Orders'].astype(int),
                 f'Balance ณ {target_date_dt.strftime("%d %b")}': df_short['Balance'].astype(int),
                 'Short Date': df_short['Short Date Format'],
                 'Note': df_short['note'].fillna('-') if 'note' in df_short.columns else '-',
-                'status การผลิต': status_list,
-                'เครื่องจักร': machine_list
+                'status การผลิต': df_short['status การผลิต'],
+                'เครื่องจักร': df_short['เครื่องจักร']
             })
             
             with c_btn:
