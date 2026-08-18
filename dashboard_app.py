@@ -86,8 +86,72 @@ def convert_df_to_excel(df):
     processed_data = output.getvalue()
     return processed_data
 
+# --- ฟังก์ชันสร้างไฟล์ Template ตัวอย่างเพื่อใช้ดาวน์โหลด ---
+@st.cache_data
+def generate_example_db_template():
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # 1. Sheet: dali wip-fg
+        df_wip = pd.DataFrame({
+            'Material': ['xxx1', 'xxx2'],
+            'Plant': [1200, 1200],
+            'Storage Location': [1201, 1201],
+            'DF stor. loc. level': ['', ''],
+            'Base Unit of Measure': ['PC', 'PC'],
+            'Unrestricted': [0, 1388]
+        })
+        df_wip.to_excel(writer, index=False, sheet_name='dali wip-fg')
+        
+        # 2. Sheet: ord
+        df_ord = pd.DataFrame({
+            'Customer': ['0000100013', '0000100013'],
+            'Name': ['ASIAN HONDA MOTOR CO.,LTD', 'ASIAN HONDA MOTOR CO.,LTD'],
+            'SAP Mat.': ['xxx', 'xxx2'],
+            'Cust.Mat.': ['abc', 'cae'],
+            'Base Qty': [20, 12],
+            'Outstd.Base Qty': [20, 5],
+            'Dlv. Date': ['2026-08-07', '2026-08-14'],
+            'On Hand': [17, 0],
+            'Wait Ins.(Unr)': [0, 0],
+            'Group': ['F-PUNCH', 'F-RP'],
+            'Create Date': ['2026-07-16', '2026-07-16'],
+            'Order': ['0002240801', '0002240813']
+        })
+        df_ord.to_excel(writer, index=False, sheet_name='ord')
+        
+        # 3. Sheet: fo
+        df_fo = pd.DataFrame({
+            'Cust.Code': ['123', '1234'],
+            'Name': ['x', 'x'],
+            'Material': ['xxx1', 'xxx2'],
+            'Description': ['aaa', 'bbb'],
+            'Mat.Group': ['F-PUNCH', 'F-RP'],
+            'Mat.Group4': ['PRESS', 'PRESS'],
+            'Cust.Group Name': ['Spare parts', 'Spare parts'],
+            'FO(Pcs)-08.2026': [0, 19],
+            'ORD(Pcs)-08.2026': [20, 29]
+        })
+        df_fo.to_excel(writer, index=False, sheet_name='fo')
+        
+        # 4. Sheet: pro
+        df_pro = pd.DataFrame({
+            'Material': ['xxxx', 'xxxx1'],
+            'Material Description': ['abc', 'aaa'],
+            'Document Header Text': ['1/INJ_17/A/3/20260801', '1/INJ_88/A/2/20260805'],
+            'Batch': ['', ''],
+            'Storage Location': ['PP01', 'PP01'],
+            'Movement Type': [131, 131],
+            'Qty in Un. of Entry': [126, 72],
+            'Unit of Entry': ['PC', 'PC'],
+            'Amount in LC': ['', ''],
+            'Material Document': ['4957809142', '4957800488'],
+            'Posting Date': ['2026-08-11', '2026-08-11']
+        })
+        df_pro.to_excel(writer, index=False, sheet_name='pro')
+        
+    return output.getvalue()
+
 # ---- Header Section ----
-# ปรับ Layout ให้มีช่องใส่ Working Day เพิ่มเข้ามา
 col_title, col_date, col_workday, col_upload = st.columns([2, 1, 1, 1.2])
 
 with col_title:
@@ -106,12 +170,20 @@ with col_date:
 
 with col_workday:
     st.markdown("⏱️ **Working Day (วัน)**")
-    # เพิ่มช่องปรับ Working Day รับค่าเริ่มต้นเป็น 20
     working_days_input = st.number_input("", min_value=1.0, value=20.0, step=1.0, label_visibility="collapsed")
 
 with col_upload:
     st.markdown("📁 **อัปโหลดไฟล์ Database**")
     db_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed")
+    
+    # --- ปุ่มดาวน์โหลด Template ตัวอย่าง ---
+    st.download_button(
+        label="📥 ดาวน์โหลดไฟล์ Template อัปโหลด",
+        data=generate_example_db_template(),
+        file_name="Template_Database_Upload.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
 
 # ---- ระบบตรวจจับและแจ้งเตือนข้อผิดพลาดเรื่องไฟล์ Template ----
 if df_check_bg is None or df_ord_bg is None:
@@ -132,23 +204,29 @@ if df_check_bg is None or df_ord_bg is None:
 if db_file:
     with st.spinner("กำลังคำนวณข้อมูลเบื้องหลัง..."):
         df_check = df_check_bg.copy()
-        df_ord = df_ord_bg.copy()
         
-        # โหลดไฟล์ Database ที่อัปโหลดเข้ามา (เช่น 13-8.xlsx)
+        # โหลดไฟล์ Database ที่อัปโหลดเข้ามา
         xls_db = pd.ExcelFile(db_file)
         sheet_names_lower = [str(s).lower() for s in xls_db.sheet_names]
         
-        # 1. อ่านชีทแรก (สต็อกปกติ)
+        # 1. อ่านชีทแรก (สต็อกปกติ / dali wip-fg)
         df_db = pd.read_excel(xls_db, sheet_name=0) 
         stock_agg = df_db.groupby('Material')['Unrestricted'].sum().to_dict()
         
-        # 2. อ่านชีท 'fo'
+        # 2. อ่านชีท 'ord' (ถ้าระบบเจอในไฟล์อัปโหลด ให้ใช้ของที่อัปโหลด ถ้าไม่เจอใช้จากระบบหลังบ้าน)
+        if 'ord' in sheet_names_lower:
+            ord_sheet_name = xls_db.sheet_names[sheet_names_lower.index('ord')]
+            df_ord = pd.read_excel(xls_db, sheet_name=ord_sheet_name, header=0)
+        else:
+            df_ord = df_ord_bg.copy()
+            
+        # 3. อ่านชีท 'fo'
         df_fo = pd.DataFrame()
         if 'fo' in sheet_names_lower:
             fo_sheet_name = xls_db.sheet_names[sheet_names_lower.index('fo')]
             df_fo = pd.read_excel(xls_db, sheet_name=fo_sheet_name, header=0)
         
-        # 3. อ่านชีท 'pro' เพื่อดึงสถานะการผลิต
+        # 4. อ่านชีท 'pro' เพื่อดึงสถานะการผลิต
         machine_mapping = {}
         if 'pro' in sheet_names_lower:
             pro_sheet_name = xls_db.sheet_names[sheet_names_lower.index('pro')]
@@ -394,7 +472,7 @@ if db_file:
                 # ปุ่มดาวน์โหลด Excel (เฉพาะ Part ที่ Short)
                 excel_data = convert_df_to_excel(df_short)
                 st.download_button(
-                    label="📥 ดาวน์โหลดไฟล์ Excel",
+                    label="📥 ดาวน์โหลดไฟล์ Excel (ที่ Short)",
                     data=excel_data,
                     file_name=f"Production_Shortage_{target_date_dt.strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -417,4 +495,4 @@ if db_file:
             st.dataframe(styled_df, use_container_width=True, height=table_height, hide_index=True)
 
 else:
-    st.markdown('<div class="metric-card" style="text-align:center; color:#6b7280; margin-top:2rem;">กรุณาอัปโหลดไฟล์ Database รายวัน (เช่น 13-8.xlsx) เพื่อเริ่มการคำนวณ</div>', unsafe_allow_html=True)
+    st.markdown('<div class="metric-card" style="text-align:center; color:#6b7280; margin-top:2rem;">กรุณาอัปโหลดไฟล์ Database รายวัน (เช่น Template.xlsx) เพื่อเริ่มการคำนวณ</div>', unsafe_allow_html=True)
