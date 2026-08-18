@@ -61,7 +61,7 @@ except NameError:
 TEMPLATE_FILENAME = "@2.daily check aug26 ทุกวัน.XLSX"
 TEMPLATE_PATH = os.path.join(current_dir, TEMPLATE_FILENAME)
 
-# Load background template data (เพิ่มการอ่าน Sheet 'fo')
+# Load background template data
 @st.cache_data
 def load_template_data(path):
     if not os.path.exists(path):
@@ -69,13 +69,10 @@ def load_template_data(path):
     df_check = pd.read_excel(path, sheet_name="check dali wipday", header=2)
     df_check = df_check.dropna(subset=['Material'])
     df_ord = pd.read_excel(path, sheet_name="ord", header=0)
-    
-    # อ่าน Sheet fo เพิ่มเติม
     try:
         df_fo = pd.read_excel(path, sheet_name="fo", header=0)
     except:
-        df_fo = pd.DataFrame() # กันเหนียวเผื่อไม่มีชีทนี้
-        
+        df_fo = pd.DataFrame() 
     return df_check, df_ord, df_fo
 
 df_check_bg, df_ord_bg, df_fo_bg = load_template_data(TEMPLATE_PATH)
@@ -90,7 +87,8 @@ def convert_df_to_excel(df):
     return processed_data
 
 # ---- Header Section ----
-col_title, col_date, col_upload = st.columns([2, 1, 1])
+# ปรับ Layout ให้มีช่องใส่ Working Day เพิ่มเข้ามา
+col_title, col_date, col_workday, col_upload = st.columns([2, 1, 1, 1.2])
 
 with col_title:
     st.markdown("""
@@ -103,8 +101,13 @@ with col_title:
     """, unsafe_allow_html=True)
 
 with col_date:
-    st.markdown("🗓️ **ดู Balance ถึงวันที่ (คลิก)**")
+    st.markdown("🗓️ **ดู Balance ถึงวันที่**")
     target_date = st.date_input("", pd.to_datetime('2026-08-31'), label_visibility="collapsed")
+
+with col_workday:
+    st.markdown("⏱️ **Working Day (วัน)**")
+    # เพิ่มช่องปรับ Working Day รับค่าเริ่มต้นเป็น 20
+    working_days_input = st.number_input("", min_value=1.0, value=20.0, step=1.0, label_visibility="collapsed")
 
 with col_upload:
     st.markdown("📁 **อัปโหลดไฟล์ Database**")
@@ -121,10 +124,8 @@ if df_check_bg is None or df_ord_bg is None:
             st.write(f"2. **เจอไฟล์ Excel อื่นๆ ในโฟลเดอร์นี้ ได้แก่:**")
             for f in available_files:
                 st.write(f"- `{f}`")
-        else:
-            st.write("2. **ไม่พบไฟล์ Excel ใดๆ ในโฟลเดอร์นี้เลย**")
-    except Exception as e:
-        st.write(f"ไม่สามารถตรวจสอบโฟลเดอร์ได้: {e}")
+    except Exception:
+        pass
     st.stop()
 
 # ---- การคำนวณ (ถ้ามีไฟล์ครบ) ----
@@ -132,19 +133,23 @@ if db_file:
     with st.spinner("กำลังคำนวณข้อมูลเบื้องหลัง..."):
         df_check = df_check_bg.copy()
         df_ord = df_ord_bg.copy()
-        df_fo = df_fo_bg.copy()
         
-        # โหลดไฟล์ Database
+        # โหลดไฟล์ Database ที่อัปโหลดเข้ามา (เช่น 13-8.xlsx)
         xls_db = pd.ExcelFile(db_file)
+        sheet_names_lower = [str(s).lower() for s in xls_db.sheet_names]
         
         # 1. อ่านชีทแรก (สต็อกปกติ)
         df_db = pd.read_excel(xls_db, sheet_name=0) 
         stock_agg = df_db.groupby('Material')['Unrestricted'].sum().to_dict()
         
-        # 2. อ่านชีท 'pro' เพื่อดึงสถานะการผลิต
-        machine_mapping = {}
-        sheet_names_lower = [str(s).lower() for s in xls_db.sheet_names]
+        # 2. อ่านชีท 'fo'
+        df_fo = pd.DataFrame()
+        if 'fo' in sheet_names_lower:
+            fo_sheet_name = xls_db.sheet_names[sheet_names_lower.index('fo')]
+            df_fo = pd.read_excel(xls_db, sheet_name=fo_sheet_name, header=0)
         
+        # 3. อ่านชีท 'pro' เพื่อดึงสถานะการผลิต
+        machine_mapping = {}
         if 'pro' in sheet_names_lower:
             pro_sheet_name = xls_db.sheet_names[sheet_names_lower.index('pro')]
             df_pro = pd.read_excel(xls_db, sheet_name=pro_sheet_name, header=None)
@@ -204,51 +209,10 @@ if db_file:
         df_check['Short Date'] = df_check['Material'].map(date_insufficient)
         df_check['SCHE'] = df_check['Matl group'].fillna('Unknown')
         
-        # --- คำนวณ WIP Days ---
-        L3_val = 20
-        df_check['order avg/day'] = pd.to_numeric(df_check['total fo+30%'], errors='coerce').fillna(0) / L3_val
-        df_check['wip days value'] = np.where(df_check['order avg/day'] > 0, df_check['Total'] / df_check['order avg/day'], 999)
-        
-        # --- กรองข้อมูล: WIP Day < 7 หรือ Balance < 0 ---
-        condition = (df_check['wip days value'] < 7) | (df_check['Balance'] < 0)
-        df_short = df_check[condition].copy()
-        
-        df_short = df_short.sort_values(by='Short Date', na_position='last')
-        df_short['Short Date Format'] = df_short['Short Date'].dt.strftime('%Y-%m-%d').fillna('-')
-        
-        total_short_parts = len(df_short)
-        total_orders_short = int(df_short['Orders'].sum())
-
-        # --- ตรวจสอบ Part หลุดแผน (มีใน FO แต่ไม่มีใน Check Dali WIP Day) ---
-        if not df_fo.empty and 'Material' in df_fo.columns:
-            fo_materials = df_fo['Material'].dropna().astype(str).str.strip().unique()
-            check_materials = df_check['Material'].dropna().astype(str).str.strip().unique()
-            
-            missing_materials = [m for m in fo_materials if m not in check_materials and m != 'nan' and m != '']
-            missing_parts_count = len(missing_materials)
-            
-            if missing_parts_count > 0:
-                st.markdown(f'''
-                    <div class="alert-box">
-                        ⚠️ <b>แจ้งเตือนความเสี่ยงหลุดแผน:</b> พบ {missing_parts_count} Part ที่มีใน Sheet <b>"fo"</b> แต่ไม่ได้นำมาคำนวณใน <b>"check dali wipday"</b>
-                    </div>
-                ''', unsafe_allow_html=True)
-                
-                with st.expander("👉 คลิกเพื่อดูรายการ Part ที่ตกหล่น"):
-                    # พยายามดึง Description มาโชว์ด้วยถ้ามี
-                    cols_to_show = ['Material']
-                    if 'Description' in df_fo.columns: cols_to_show.append('Description')
-                    
-                    missing_df = df_fo[df_fo['Material'].astype(str).str.strip().isin(missing_materials)][cols_to_show]
-                    missing_df = missing_df.drop_duplicates(subset=['Material'])
-                    missing_df.columns = ['Part No. ที่ตกหล่น', 'รายละเอียด (Description)'][:len(cols_to_show)]
-                    
-                    st.dataframe(missing_df, use_container_width=True, hide_index=True)
-
-        # --- จับคู่สถานะการผลิต ---
+        # --- จับคู่สถานะการผลิต และ เครื่องจักร (ทำกับทุก Part) ---
         status_list = []
         machine_list = []
-        for comp, mat in zip(df_short['Component'], df_short['Material']):
+        for comp, mat in zip(df_check['Component'], df_check['Material']):
             comp_str = str(comp).strip() if pd.notna(comp) else ""
             mat_str = str(mat).strip() if pd.notna(mat) else ""
             
@@ -265,8 +229,64 @@ if db_file:
                 status_list.append('ไม่ได้ผลิต')
                 machine_list.append('-')
                 
-        df_short['status การผลิต'] = status_list
-        df_short['เครื่องจักร'] = machine_list
+        df_check['status การผลิต'] = status_list
+        df_check['เครื่องจักร'] = machine_list
+
+        # --- คำนวณ WIP Days โดยใช้ตัวแปรจาก Input ---
+        df_check['order avg/day'] = pd.to_numeric(df_check['total fo+30%'], errors='coerce').fillna(0) / working_days_input
+        df_check['wip days value'] = np.where(df_check['order avg/day'] > 0, df_check['Total'] / df_check['order avg/day'], 999)
+        
+        # จัดเรียงตาม Short Date
+        df_check = df_check.sort_values(by='Short Date', na_position='last')
+        df_check['Short Date Format'] = df_check['Short Date'].dt.strftime('%Y-%m-%d').fillna('-')
+        
+        # --- เตรียม Dataframe แบบสมบูรณ์ที่มีทุก Part (สำหรับระบบค้นหา) ---
+        balance_col_name = f'Balance ณ {target_date_dt.strftime("%d %b")}'
+        display_df_all = pd.DataFrame({
+            'SCHE': df_check['SCHE'],
+            'Part No.': df_check['Component'],
+            'Material': df_check['Material'],
+            'WIP+FG': df_check['Total'].astype(int),
+            'WIP Day': df_check['wip days value'],
+            'Orders': df_check['Orders'].astype(int),
+            balance_col_name: df_check['Balance'].astype(int),
+            'Short Date': df_check['Short Date Format'],
+            'Note': df_check['note'].fillna('-') if 'note' in df_check.columns else '-',
+            'status การผลิต': df_check['status การผลิต'],
+            'เครื่องจักร': df_check['เครื่องจักร']
+        })
+
+        # --- กรองข้อมูลเฉพาะตัวที่ติดลบ หรือ WIP < 7 วัน สำหรับโชว์กราฟและตารางหลัก ---
+        condition_short = (display_df_all['WIP Day'] < 7) | (display_df_all[balance_col_name] < 0)
+        df_short = display_df_all[condition_short].copy()
+        
+        total_short_parts = len(df_short)
+        total_orders_short = int(df_short['Orders'].sum())
+
+        # --- ตรวจสอบ Part หลุดแผน ---
+        if not df_fo.empty and 'Material' in df_fo.columns:
+            fo_materials = df_fo['Material'].dropna().astype(str).str.strip().unique()
+            check_materials = df_check['Material'].dropna().astype(str).str.strip().unique()
+            
+            missing_materials = [m for m in fo_materials if m not in check_materials and m != 'nan' and m != '']
+            missing_parts_count = len(missing_materials)
+            
+            if missing_parts_count > 0:
+                st.markdown(f'''
+                    <div class="alert-box">
+                        ⚠️ <b>แจ้งเตือนความเสี่ยงหลุดแผน:</b> พบ {missing_parts_count} Part ที่มีใน Sheet <b>"fo" (จากไฟล์อัปโหลด)</b> แต่ไม่ได้นำมาคำนวณใน Template <b>"check dali wipday"</b>
+                    </div>
+                ''', unsafe_allow_html=True)
+                
+                with st.expander("👉 คลิกเพื่อดูรายการ Part ที่ตกหล่น"):
+                    cols_to_show = ['Material']
+                    if 'Description' in df_fo.columns: cols_to_show.append('Description')
+                    
+                    missing_df = df_fo[df_fo['Material'].astype(str).str.strip().isin(missing_materials)][cols_to_show]
+                    missing_df = missing_df.drop_duplicates(subset=['Material'])
+                    missing_df.columns = ['Part No. ที่ตกหล่น', 'รายละเอียด (Description)'][:len(cols_to_show)]
+                    
+                    st.dataframe(missing_df, use_container_width=True, hide_index=True)
 
         # ---- สร้างการ์ดแสดงผล ----
         col_m1, col_m2, col_m3 = st.columns(3)
@@ -297,7 +317,44 @@ if db_file:
             """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
+        
+        # ฟังก์ชันปรับสีตัวเลขสำหรับตาราง
+        def color_balance(val):
+            color = 'red' if isinstance(val, (int, float)) and val < 0 else 'black'
+            return f'color: {color}'
+        
+        def color_wip(val):
+            color = 'red' if isinstance(val, (int, float)) and val < 7 else 'black'
+            return f'color: {color}'
+        
+        format_dict = {'WIP Day': '{:.2f}'}
 
+        # --- ส่วนค้นหา Part อื่นๆ ที่ไม่ได้ติด Short ---
+        st.markdown("### 🔍 ค้นหาสถานะ Part ข้อมูลทั้งหมด (All Parts)")
+        search_query = st.text_input("พิมพ์รหัส Part No. หรือ Material (เช่น 1184469, BZ130) เพื่อเช็คสถานะ...", "")
+        
+        if search_query:
+            # ค้นหาคำที่พิมพ์ใน Column Part No. หรือ Material
+            search_mask = display_df_all['Part No.'].astype(str).str.contains(search_query, case=False, na=False) | \
+                          display_df_all['Material'].astype(str).str.contains(search_query, case=False, na=False)
+            searched_df = display_df_all[search_mask]
+            
+            if not searched_df.empty:
+                try:
+                    styled_search = searched_df.style.map(color_balance, subset=[balance_col_name])\
+                                                .map(color_wip, subset=['WIP Day'])\
+                                                .format(format_dict)
+                except AttributeError:
+                    styled_search = searched_df.style.applymap(color_balance, subset=[balance_col_name])\
+                                                .applymap(color_wip, subset=['WIP Day'])\
+                                                .format(format_dict)
+                st.dataframe(styled_search, use_container_width=True, hide_index=True)
+            else:
+                st.warning(f"❌ ไม่พบข้อมูล Part ที่ตรงกับ '{search_query}' ในฐานข้อมูล")
+
+        st.markdown("<hr>", unsafe_allow_html=True)
+
+        # --- ส่วนแสดงกราฟและตาราง Part ที่ต้องระวัง ---
         col_chart, col_table = st.columns([1, 2.5]) 
         
         with col_chart:
@@ -333,22 +390,9 @@ if db_file:
             with c_header:
                 st.markdown("**รายการ Part ที่ติดลบ (Short Date) หรือ WIP < 7 วัน**")
             
-            display_df = pd.DataFrame({
-                'SCHE': df_short['SCHE'],
-                'Part No.': df_short['Component'],
-                'Material': df_short['Material'],
-                'WIP+FG': df_short['Total'].astype(int),
-                'WIP Day': df_short['wip days value'],
-                'Orders': df_short['Orders'].astype(int),
-                f'Balance ณ {target_date_dt.strftime("%d %b")}': df_short['Balance'].astype(int),
-                'Short Date': df_short['Short Date Format'],
-                'Note': df_short['note'].fillna('-') if 'note' in df_short.columns else '-',
-                'status การผลิต': df_short['status การผลิต'],
-                'เครื่องจักร': df_short['เครื่องจักร']
-            })
-            
             with c_btn:
-                excel_data = convert_df_to_excel(display_df)
+                # ปุ่มดาวน์โหลด Excel (เฉพาะ Part ที่ Short)
+                excel_data = convert_df_to_excel(df_short)
                 st.download_button(
                     label="📥 ดาวน์โหลดไฟล์ Excel",
                     data=excel_data,
@@ -357,30 +401,20 @@ if db_file:
                     use_container_width=True
                 )
             
-            def color_balance(val):
-                color = 'red' if isinstance(val, (int, float)) and val < 0 else 'black'
-                return f'color: {color}'
-            
-            def color_wip(val):
-                color = 'red' if isinstance(val, (int, float)) and val < 7 else 'black'
-                return f'color: {color}'
-            
-            format_dict = {'WIP Day': '{:.2f}'}
-            
             try:
-                styled_df = display_df.style.map(color_balance, subset=[f'Balance ณ {target_date_dt.strftime("%d %b")}'])\
+                styled_df = df_short.style.map(color_balance, subset=[balance_col_name])\
                                             .map(color_wip, subset=['WIP Day'])\
                                             .format(format_dict)
             except AttributeError:
-                styled_df = display_df.style.applymap(color_balance, subset=[f'Balance ณ {target_date_dt.strftime("%d %b")}'])\
+                styled_df = df_short.style.applymap(color_balance, subset=[balance_col_name])\
                                             .applymap(color_wip, subset=['WIP Day'])\
                                             .format(format_dict)
             
-            table_height = (len(display_df) + 1) * 35 + 10
+            table_height = (len(df_short) + 1) * 35 + 10
             if table_height < 150: 
                 table_height = 150
                 
             st.dataframe(styled_df, use_container_width=True, height=table_height, hide_index=True)
 
 else:
-    st.markdown('<div class="metric-card" style="text-align:center; color:#6b7280; margin-top:2rem;">กรุณาอัปโหลดไฟล์ Database รายวันเพื่อเริ่มการคำนวณ</div>', unsafe_allow_html=True)
+    st.markdown('<div class="metric-card" style="text-align:center; color:#6b7280; margin-top:2rem;">กรุณาอัปโหลดไฟล์ Database รายวัน (เช่น 13-8.xlsx) เพื่อเริ่มการคำนวณ</div>', unsafe_allow_html=True)
