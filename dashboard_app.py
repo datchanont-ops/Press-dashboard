@@ -93,12 +93,12 @@ def generate_example_db_template():
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         # 1. Sheet: dali wip-fg
         df_wip = pd.DataFrame({
-            'Material': ['xxx1', 'xxx2'],
-            'Plant': [1200, 1200],
-            'Storage Location': [1201, 1201],
-            'DF stor. loc. level': ['', ''],
-            'Base Unit of Measure': ['PC', 'PC'],
-            'Unrestricted': [0, 1388]
+            'Material': ['xxx1', 'xxx2;A1', 'xxx2;A2'], # จำลองข้อมูลให้มี ;A1, ;A2
+            'Plant': [1200, 1200, 1200],
+            'Storage Location': [1201, 1201, 1201],
+            'DF stor. loc. level': ['', '', ''],
+            'Base Unit of Measure': ['PC', 'PC', 'PC'],
+            'Unrestricted': [0, 1000, 388]
         })
         df_wip.to_excel(writer, index=False, sheet_name='dali wip-fg')
         
@@ -211,6 +211,13 @@ if db_file:
         
         # 1. อ่านชีทแรก (สต็อกปกติ / dali wip-fg)
         df_db = pd.read_excel(xls_db, sheet_name=0) 
+        
+        # --- อัปเดต: ตัด ;A1 และ ;A2 ออกจากคอลัมน์ Material เพื่อให้กลายเป็น Part FG เดี่ยวกัน ---
+        if 'Material' in df_db.columns:
+            df_db['Material'] = df_db['Material'].astype(str).str.strip()
+            # ใช้ regex เพื่อหาคำว่า ;A1 หรือ ;A2 ที่อยู่ท้ายสุดของข้อความแล้วแทนที่ด้วยค่าว่าง
+            df_db['Material'] = df_db['Material'].str.replace(r';A[12]$', '', regex=True)
+            
         stock_agg = df_db.groupby('Material')['Unrestricted'].sum().to_dict()
         
         # 2. อ่านชีท 'ord' (ถ้าระบบเจอในไฟล์อัปโหลด ให้ใช้ของที่อัปโหลด ถ้าไม่เจอใช้จากระบบหลังบ้าน)
