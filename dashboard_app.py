@@ -222,9 +222,26 @@ if db_file:
             
         # 3. อ่านชีท 'fo'
         df_fo = pd.DataFrame()
+        max_fo_map = {}
+        max_ord_map = {}
         if 'fo' in sheet_names_lower:
             fo_sheet_name = xls_db.sheet_names[sheet_names_lower.index('fo')]
             df_fo = pd.read_excel(xls_db, sheet_name=fo_sheet_name, header=0)
+            
+            # --- คำนวณหาค่า Max FO และ Max ORD ---
+            if not df_fo.empty and 'Material' in df_fo.columns:
+                # ดึงเฉพาะชื่อคอลัมน์ที่มีคำว่า FO หรือ ORD
+                fo_cols = [c for c in df_fo.columns if 'FO' in str(c).upper()]
+                ord_cols = [c for c in df_fo.columns if 'ORD' in str(c).upper()]
+                
+                # หาค่า Max ในแนวนอน (axis=1) ของคอลัมน์นั้นๆ
+                df_fo['Max_FO'] = df_fo[fo_cols].max(axis=1) if fo_cols else 0
+                df_fo['Max_ORD'] = df_fo[ord_cols].max(axis=1) if ord_cols else 0
+                
+                # สร้าง Dictionary สำหรับจับคู่กับ Material ในตารางหลัก
+                df_fo['Material'] = df_fo['Material'].astype(str).str.strip()
+                max_fo_map = dict(zip(df_fo['Material'], df_fo['Max_FO']))
+                max_ord_map = dict(zip(df_fo['Material'], df_fo['Max_ORD']))
         
         # 4. อ่านชีท 'pro' เพื่อดึงสถานะการผลิต
         machine_mapping = {}
@@ -287,6 +304,10 @@ if db_file:
         df_check['Short Date'] = df_check['Material'].map(date_insufficient)
         df_check['SCHE'] = df_check['Matl group'].fillna('Unknown')
         
+        # --- นำค่า Max ที่หาได้มาใส่ใน df_check หลัก ---
+        df_check['Max FO'] = df_check['Material'].astype(str).str.strip().map(max_fo_map).fillna(0)
+        df_check['Max ORD'] = df_check['Material'].astype(str).str.strip().map(max_ord_map).fillna(0)
+        
         # --- จับคู่สถานะการผลิต และ เครื่องจักร ---
         status_list = []
         machine_list = []
@@ -317,7 +338,7 @@ if db_file:
         df_check = df_check.sort_values(by='Short Date', na_position='last')
         df_check['Short Date Format'] = df_check['Short Date'].dt.strftime('%Y-%m-%d').fillna('-')
         
-        # --- เตรียม Dataframe ทั้งหมด ---
+        # --- เตรียม Dataframe ทั้งหมด (เพิ่ม Max FO และ Max ORD เข้าไปในตาราง) ---
         balance_col_name = f'Balance ณ {target_date_dt.strftime("%d %b")}'
         display_df_all = pd.DataFrame({
             'SCHE': df_check['SCHE'],
@@ -325,6 +346,8 @@ if db_file:
             'Material': df_check['Material'],
             'WIP+FG': df_check['Total'].astype(int),
             'WIP Day': df_check['wip days value'],
+            'Max FO': df_check['Max FO'].astype(int),
+            'Max ORD': df_check['Max ORD'].astype(int),
             'Orders': df_check['Orders'].astype(int),
             balance_col_name: df_check['Balance'].astype(int),
             'Short Date': df_check['Short Date Format'],
@@ -409,11 +432,9 @@ if db_file:
         search_query = st.text_input("พิมพ์รหัส Part No. หรือ Material (คั่นด้วยลูกน้ำ ',' หากต้องการเทียบหลายตัว เช่น 1184469, BZ130)", "")
         
         if search_query:
-            # แยกคำค้นหาด้วยเครื่องหมายลูกน้ำ และตัดช่องว่างออก
             queries = [q.strip() for q in search_query.split(',') if q.strip()]
             
             if queries:
-                # สร้างเงื่อนไขรวมกัน (เช่น เจอ Part A หรือ Part B หรือ Part C)
                 search_mask = pd.Series(False, index=display_df_all.index)
                 for q in queries:
                     mask = display_df_all['Part No.'].astype(str).str.contains(q, case=False, na=False) | \
