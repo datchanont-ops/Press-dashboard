@@ -86,7 +86,7 @@ def convert_df_to_excel(df):
     processed_data = output.getvalue()
     return processed_data
 
-# --- ฟังก์ชันสร้างไฟล์ Template ตัวอย่างเพื่อใช้ดาวน์โหลด ---
+# --- ฟังก์ชันสร้างไฟล์ Template ตัวอย่างเพื่อใช้ดาวน์โหลด (ปรับโครงสร้างชีท FO ใหม่) ---
 @st.cache_data
 def generate_example_db_template():
     output = BytesIO()
@@ -117,6 +117,7 @@ def generate_example_db_template():
         })
         df_ord.to_excel(writer, index=False, sheet_name='ord')
         
+        # ปรับรูปแบบชีท FO ใหม่ ให้เหลือแค่เดือน N และ N+1 และมีเฉพาะ (Pcs)
         df_fo = pd.DataFrame({
             'Cust.Code': ['123', '1234'],
             'Name': ['x', 'x'],
@@ -125,8 +126,10 @@ def generate_example_db_template():
             'Mat.Group': ['F-PUNCH', 'F-RP'],
             'Mat.Group4': ['PRESS', 'PRESS'],
             'Cust.Group Name': ['Spare parts', 'Spare parts'],
-            'FO(Pcs)-08.2026': [0, 19],
-            'ORD(Pcs)-08.2026': [20, 29]
+            'FO(Pcs)-08.2026': [0, 19],     # เดือน N
+            'ORD(Pcs)-08.2026': [20, 29],   # เดือน N
+            'FO(Pcs)-09.2026': [10, 25],    # เดือน N+1
+            'ORD(Pcs)-09.2026': [15, 35]    # เดือน N+1
         })
         df_fo.to_excel(writer, index=False, sheet_name='fo')
         
@@ -206,7 +209,6 @@ if db_file:
         # 1. อ่านชีทแรก (สต็อกปกติ / dali wip-fg)
         df_db = pd.read_excel(xls_db, sheet_name=0) 
         
-        # ตัด ;A1 และ ;A2 ออกจากคอลัมน์ Material เพื่อให้กลายเป็น Part FG เดี่ยวกัน
         if 'Material' in df_db.columns:
             df_db['Material'] = df_db['Material'].astype(str).str.strip()
             df_db['Material'] = df_db['Material'].str.replace(r';A[12]$', '', regex=True)
@@ -220,7 +222,7 @@ if db_file:
         else:
             df_ord = df_ord_bg.copy()
             
-        # 3. อ่านชีท 'fo'
+        # 3. อ่านชีท 'fo' เพื่อหา Max FO/ORD
         df_fo = pd.DataFrame()
         max_fo_map = {}
         max_ord_map = {}
@@ -228,17 +230,15 @@ if db_file:
             fo_sheet_name = xls_db.sheet_names[sheet_names_lower.index('fo')]
             df_fo = pd.read_excel(xls_db, sheet_name=fo_sheet_name, header=0)
             
-            # --- คำนวณหาค่า Max FO และ Max ORD ---
+            # --- ดึงเฉพาะคอลัมน์ที่เป็น (Pcs) เพื่อคำนวณหา Max FO และ Max ORD ---
             if not df_fo.empty and 'Material' in df_fo.columns:
-                # ดึงเฉพาะชื่อคอลัมน์ที่มีคำว่า FO หรือ ORD
-                fo_cols = [c for c in df_fo.columns if 'FO' in str(c).upper()]
-                ord_cols = [c for c in df_fo.columns if 'ORD' in str(c).upper()]
+                # ระบบจะดึงเอาเฉพาะคอลัมน์ FO หรือ ORD ที่มีคำว่า (Pcs) ซึ่งตอนนี้ในไฟล์มีแค่เดือน N และ N+1 
+                fo_cols = [c for c in df_fo.columns if 'FO' in str(c).upper() and '(PCS)' in str(c).upper()]
+                ord_cols = [c for c in df_fo.columns if 'ORD' in str(c).upper() and '(PCS)' in str(c).upper()]
                 
-                # หาค่า Max ในแนวนอน (axis=1) ของคอลัมน์นั้นๆ
                 df_fo['Max_FO'] = df_fo[fo_cols].max(axis=1) if fo_cols else 0
                 df_fo['Max_ORD'] = df_fo[ord_cols].max(axis=1) if ord_cols else 0
                 
-                # สร้าง Dictionary สำหรับจับคู่กับ Material ในตารางหลัก
                 df_fo['Material'] = df_fo['Material'].astype(str).str.strip()
                 max_fo_map = dict(zip(df_fo['Material'], df_fo['Max_FO']))
                 max_ord_map = dict(zip(df_fo['Material'], df_fo['Max_ORD']))
