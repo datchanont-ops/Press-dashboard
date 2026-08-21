@@ -91,9 +91,8 @@ def convert_df_to_excel(df):
 def generate_example_db_template():
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # 1. Sheet: dali wip-fg
         df_wip = pd.DataFrame({
-            'Material': ['xxx1', 'xxx2;A1', 'xxx2;A2'], # จำลองข้อมูลให้มี ;A1, ;A2
+            'Material': ['xxx1', 'xxx2;A1', 'xxx2;A2'], 
             'Plant': [1200, 1200, 1200],
             'Storage Location': [1201, 1201, 1201],
             'DF stor. loc. level': ['', '', ''],
@@ -102,7 +101,6 @@ def generate_example_db_template():
         })
         df_wip.to_excel(writer, index=False, sheet_name='dali wip-fg')
         
-        # 2. Sheet: ord
         df_ord = pd.DataFrame({
             'Customer': ['0000100013', '0000100013'],
             'Name': ['ASIAN HONDA MOTOR CO.,LTD', 'ASIAN HONDA MOTOR CO.,LTD'],
@@ -119,7 +117,6 @@ def generate_example_db_template():
         })
         df_ord.to_excel(writer, index=False, sheet_name='ord')
         
-        # 3. Sheet: fo
         df_fo = pd.DataFrame({
             'Cust.Code': ['123', '1234'],
             'Name': ['x', 'x'],
@@ -133,7 +130,6 @@ def generate_example_db_template():
         })
         df_fo.to_excel(writer, index=False, sheet_name='fo')
         
-        # 4. Sheet: pro
         df_pro = pd.DataFrame({
             'Material': ['xxxx', 'xxxx1'],
             'Material Description': ['abc', 'aaa'],
@@ -176,7 +172,6 @@ with col_upload:
     st.markdown("📁 **อัปโหลดไฟล์ Database**")
     db_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed")
     
-    # --- ปุ่มดาวน์โหลด Template ตัวอย่าง ---
     st.download_button(
         label="📥 ดาวน์โหลดไฟล์ Template อัปโหลด",
         data=generate_example_db_template(),
@@ -205,22 +200,20 @@ if db_file:
     with st.spinner("กำลังคำนวณข้อมูลเบื้องหลัง..."):
         df_check = df_check_bg.copy()
         
-        # โหลดไฟล์ Database ที่อัปโหลดเข้ามา
         xls_db = pd.ExcelFile(db_file)
         sheet_names_lower = [str(s).lower() for s in xls_db.sheet_names]
         
         # 1. อ่านชีทแรก (สต็อกปกติ / dali wip-fg)
         df_db = pd.read_excel(xls_db, sheet_name=0) 
         
-        # --- อัปเดต: ตัด ;A1 และ ;A2 ออกจากคอลัมน์ Material เพื่อให้กลายเป็น Part FG เดี่ยวกัน ---
+        # ตัด ;A1 และ ;A2 ออกจากคอลัมน์ Material เพื่อให้กลายเป็น Part FG เดี่ยวกัน
         if 'Material' in df_db.columns:
             df_db['Material'] = df_db['Material'].astype(str).str.strip()
-            # ใช้ regex เพื่อหาคำว่า ;A1 หรือ ;A2 ที่อยู่ท้ายสุดของข้อความแล้วแทนที่ด้วยค่าว่าง
             df_db['Material'] = df_db['Material'].str.replace(r';A[12]$', '', regex=True)
             
         stock_agg = df_db.groupby('Material')['Unrestricted'].sum().to_dict()
         
-        # 2. อ่านชีท 'ord' (ถ้าระบบเจอในไฟล์อัปโหลด ให้ใช้ของที่อัปโหลด ถ้าไม่เจอใช้จากระบบหลังบ้าน)
+        # 2. อ่านชีท 'ord' 
         if 'ord' in sheet_names_lower:
             ord_sheet_name = xls_db.sheet_names[sheet_names_lower.index('ord')]
             df_ord = pd.read_excel(xls_db, sheet_name=ord_sheet_name, header=0)
@@ -294,7 +287,7 @@ if db_file:
         df_check['Short Date'] = df_check['Material'].map(date_insufficient)
         df_check['SCHE'] = df_check['Matl group'].fillna('Unknown')
         
-        # --- จับคู่สถานะการผลิต และ เครื่องจักร (ทำกับทุก Part) ---
+        # --- จับคู่สถานะการผลิต และ เครื่องจักร ---
         status_list = []
         machine_list = []
         for comp, mat in zip(df_check['Component'], df_check['Material']):
@@ -317,15 +310,14 @@ if db_file:
         df_check['status การผลิต'] = status_list
         df_check['เครื่องจักร'] = machine_list
 
-        # --- คำนวณ WIP Days โดยใช้ตัวแปรจาก Input ---
+        # --- คำนวณ WIP Days ---
         df_check['order avg/day'] = pd.to_numeric(df_check['total fo+30%'], errors='coerce').fillna(0) / working_days_input
         df_check['wip days value'] = np.where(df_check['order avg/day'] > 0, df_check['Total'] / df_check['order avg/day'], 999)
         
-        # จัดเรียงตาม Short Date
         df_check = df_check.sort_values(by='Short Date', na_position='last')
         df_check['Short Date Format'] = df_check['Short Date'].dt.strftime('%Y-%m-%d').fillna('-')
         
-        # --- เตรียม Dataframe แบบสมบูรณ์ที่มีทุก Part (สำหรับระบบค้นหา) ---
+        # --- เตรียม Dataframe ทั้งหมด ---
         balance_col_name = f'Balance ณ {target_date_dt.strftime("%d %b")}'
         display_df_all = pd.DataFrame({
             'SCHE': df_check['SCHE'],
@@ -341,7 +333,6 @@ if db_file:
             'เครื่องจักร': df_check['เครื่องจักร']
         })
 
-        # --- กรองข้อมูลเฉพาะตัวที่ติดลบ หรือ WIP < 7 วัน สำหรับโชว์กราฟและตารางหลัก ---
         condition_short = (display_df_all['WIP Day'] < 7) | (display_df_all[balance_col_name] < 0)
         df_short = display_df_all[condition_short].copy()
         
@@ -403,7 +394,6 @@ if db_file:
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # ฟังก์ชันปรับสีตัวเลขสำหรับตาราง
         def color_balance(val):
             color = 'red' if isinstance(val, (int, float)) and val < 0 else 'black'
             return f'color: {color}'
@@ -414,28 +404,36 @@ if db_file:
         
         format_dict = {'WIP Day': '{:.2f}'}
 
-        # --- ส่วนค้นหา Part อื่นๆ ที่ไม่ได้ติด Short ---
-        st.markdown("### 🔍 ค้นหาสถานะ Part ข้อมูลทั้งหมด (All Parts)")
-        search_query = st.text_input("พิมพ์รหัส Part No. หรือ Material (เช่น 1184469, BZ130) เพื่อเช็คสถานะ...", "")
+        # --- ส่วนค้นหาหลาย Part พร้อมกัน ---
+        st.markdown("### 🔍 ค้นหาสถานะ Part ข้อมูลทั้งหมด (เทียบหลายรายการได้)")
+        search_query = st.text_input("พิมพ์รหัส Part No. หรือ Material (คั่นด้วยลูกน้ำ ',' หากต้องการเทียบหลายตัว เช่น 1184469, BZ130)", "")
         
         if search_query:
-            # ค้นหาคำที่พิมพ์ใน Column Part No. หรือ Material
-            search_mask = display_df_all['Part No.'].astype(str).str.contains(search_query, case=False, na=False) | \
-                          display_df_all['Material'].astype(str).str.contains(search_query, case=False, na=False)
-            searched_df = display_df_all[search_mask]
+            # แยกคำค้นหาด้วยเครื่องหมายลูกน้ำ และตัดช่องว่างออก
+            queries = [q.strip() for q in search_query.split(',') if q.strip()]
             
-            if not searched_df.empty:
-                try:
-                    styled_search = searched_df.style.map(color_balance, subset=[balance_col_name])\
-                                                .map(color_wip, subset=['WIP Day'])\
-                                                .format(format_dict)
-                except AttributeError:
-                    styled_search = searched_df.style.applymap(color_balance, subset=[balance_col_name])\
-                                                .applymap(color_wip, subset=['WIP Day'])\
-                                                .format(format_dict)
-                st.dataframe(styled_search, use_container_width=True, hide_index=True)
-            else:
-                st.warning(f"❌ ไม่พบข้อมูล Part ที่ตรงกับ '{search_query}' ในฐานข้อมูล")
+            if queries:
+                # สร้างเงื่อนไขรวมกัน (เช่น เจอ Part A หรือ Part B หรือ Part C)
+                search_mask = pd.Series(False, index=display_df_all.index)
+                for q in queries:
+                    mask = display_df_all['Part No.'].astype(str).str.contains(q, case=False, na=False) | \
+                           display_df_all['Material'].astype(str).str.contains(q, case=False, na=False)
+                    search_mask = search_mask | mask
+                
+                searched_df = display_df_all[search_mask]
+                
+                if not searched_df.empty:
+                    try:
+                        styled_search = searched_df.style.map(color_balance, subset=[balance_col_name])\
+                                                    .map(color_wip, subset=['WIP Day'])\
+                                                    .format(format_dict)
+                    except AttributeError:
+                        styled_search = searched_df.style.applymap(color_balance, subset=[balance_col_name])\
+                                                    .applymap(color_wip, subset=['WIP Day'])\
+                                                    .format(format_dict)
+                    st.dataframe(styled_search, use_container_width=True, hide_index=True)
+                else:
+                    st.warning(f"❌ ไม่พบข้อมูล Part ที่ตรงกับ '{search_query}' ในฐานข้อมูล")
 
         st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -476,7 +474,6 @@ if db_file:
                 st.markdown("**รายการ Part ที่ติดลบ (Short Date) หรือ WIP < 7 วัน**")
             
             with c_btn:
-                # ปุ่มดาวน์โหลด Excel (เฉพาะ Part ที่ Short)
                 excel_data = convert_df_to_excel(df_short)
                 st.download_button(
                     label="📥 ดาวน์โหลดไฟล์ Excel (ที่ Short)",
