@@ -61,6 +61,9 @@ except NameError:
 TEMPLATE_FILENAME = "@2.daily check aug26 ทุกวัน.XLSX"
 TEMPLATE_PATH = os.path.join(current_dir, TEMPLATE_FILENAME)
 
+# โฟลเดอร์/ไฟล์ สำหรับระบบจำข้อมูลอัตโนมัติ
+SAVED_DB_PATH = os.path.join(current_dir, 'saved_database_upload.xlsx')
+
 # Load background template data
 @st.cache_data
 def load_template_data(path):
@@ -117,7 +120,6 @@ def generate_example_db_template():
         })
         df_ord.to_excel(writer, index=False, sheet_name='ord')
         
-        # ปรับรูปแบบชีท FO ใหม่ ให้เหลือแค่เดือน N และ N+1 และมีเฉพาะ (Pcs)
         df_fo = pd.DataFrame({
             'Cust.Code': ['123', '1234'],
             'Name': ['x', 'x'],
@@ -126,10 +128,10 @@ def generate_example_db_template():
             'Mat.Group': ['F-PUNCH', 'F-RP'],
             'Mat.Group4': ['PRESS', 'PRESS'],
             'Cust.Group Name': ['Spare parts', 'Spare parts'],
-            'FO(Pcs)-08.2026': [0, 19],     # เดือน N
-            'ORD(Pcs)-08.2026': [20, 29],   # เดือน N
-            'FO(Pcs)-09.2026': [10, 25],    # เดือน N+1
-            'ORD(Pcs)-09.2026': [15, 35]    # เดือน N+1
+            'FO(Pcs)-08.2026': [0, 19],
+            'ORD(Pcs)-08.2026': [20, 29],
+            'FO(Pcs)-09.2026': [10, 25],
+            'ORD(Pcs)-09.2026': [15, 35]
         })
         df_fo.to_excel(writer, index=False, sheet_name='fo')
         
@@ -175,6 +177,21 @@ with col_upload:
     st.markdown("📁 **อัปโหลดไฟล์ Database**")
     db_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed")
     
+    # --- ระบบจำไฟล์อัตโนมัติ (Fallback System) ---
+    active_db_file = None
+    if db_file is not None:
+        active_db_file = db_file
+        if st.button("💾 บันทึกไฟล์นี้ไว้ใช้รอบหน้า", use_container_width=True):
+            with open(SAVED_DB_PATH, "wb") as f:
+                f.write(db_file.getbuffer())
+            st.success("✅ บันทึกไฟล์เรียบร้อย! คราวหน้าไม่ต้องอัปโหลดซ้ำแล้วครับ")
+    elif os.path.exists(SAVED_DB_PATH):
+        active_db_file = SAVED_DB_PATH
+        st.caption("📌 กำลังแสดงผลจาก: **ไฟล์ที่บันทึกไว้ล่าสุด**")
+        if st.button("🗑️ ล้างข้อมูลไฟล์ที่บันทึกไว้", use_container_width=True):
+            os.remove(SAVED_DB_PATH)
+            st.rerun()
+
     st.download_button(
         label="📥 ดาวน์โหลดไฟล์ Template อัปโหลด",
         data=generate_example_db_template(),
@@ -199,11 +216,11 @@ if df_check_bg is None or df_ord_bg is None:
     st.stop()
 
 # ---- การคำนวณ (ถ้ามีไฟล์ครบ) ----
-if db_file:
+if active_db_file:
     with st.spinner("กำลังคำนวณข้อมูลเบื้องหลัง..."):
         df_check = df_check_bg.copy()
         
-        xls_db = pd.ExcelFile(db_file)
+        xls_db = pd.ExcelFile(active_db_file)
         sheet_names_lower = [str(s).lower() for s in xls_db.sheet_names]
         
         # 1. อ่านชีทแรก (สต็อกปกติ / dali wip-fg)
@@ -230,9 +247,7 @@ if db_file:
             fo_sheet_name = xls_db.sheet_names[sheet_names_lower.index('fo')]
             df_fo = pd.read_excel(xls_db, sheet_name=fo_sheet_name, header=0)
             
-            # --- ดึงเฉพาะคอลัมน์ที่เป็น (Pcs) เพื่อคำนวณหา Max FO และ Max ORD ---
             if not df_fo.empty and 'Material' in df_fo.columns:
-                # ระบบจะดึงเอาเฉพาะคอลัมน์ FO หรือ ORD ที่มีคำว่า (Pcs) ซึ่งตอนนี้ในไฟล์มีแค่เดือน N และ N+1 
                 fo_cols = [c for c in df_fo.columns if 'FO' in str(c).upper() and '(PCS)' in str(c).upper()]
                 ord_cols = [c for c in df_fo.columns if 'ORD' in str(c).upper() and '(PCS)' in str(c).upper()]
                 
@@ -338,7 +353,7 @@ if db_file:
         df_check = df_check.sort_values(by='Short Date', na_position='last')
         df_check['Short Date Format'] = df_check['Short Date'].dt.strftime('%Y-%m-%d').fillna('-')
         
-        # --- เตรียม Dataframe ทั้งหมด (เพิ่ม Max FO และ Max ORD เข้าไปในตาราง) ---
+        # --- เตรียม Dataframe ทั้งหมด ---
         balance_col_name = f'Balance ณ {target_date_dt.strftime("%d %b")}'
         display_df_all = pd.DataFrame({
             'SCHE': df_check['SCHE'],
@@ -520,4 +535,4 @@ if db_file:
             st.dataframe(styled_df, use_container_width=True, height=table_height, hide_index=True)
 
 else:
-    st.markdown('<div class="metric-card" style="text-align:center; color:#6b7280; margin-top:2rem;">กรุณาอัปโหลดไฟล์ Database รายวัน (เช่น Template.xlsx) เพื่อเริ่มการคำนวณ</div>', unsafe_allow_html=True)
+    st.markdown('<div class="metric-card" style="text-align:center; color:#6b7280; margin-top:2rem;">กรุณาอัปโหลดไฟล์ Database รายวัน หรือใช้ข้อมูลที่บันทึกไว้ เพื่อเริ่มการคำนวณ</div>', unsafe_allow_html=True)
