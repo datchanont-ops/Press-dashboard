@@ -4,9 +4,63 @@ import numpy as np
 import os
 import plotly.express as px
 from io import BytesIO
+import base64
+import requests
 
 # ---- Page Config ----
 st.set_page_config(page_title="Production Shortage Dashboard", layout="wide", initial_sidebar_state="collapsed")
+
+# ==========================================
+# 🔗 GitHub Persistence Layer
+# ==========================================
+try:
+    GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
+    GITHUB_REPO = st.secrets["GITHUB_REPO"]
+    GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
+    GITHUB_DATA_DIR = st.secrets.get("GITHUB_DATA_DIR", "data")
+    GITHUB_ENABLED = True
+except Exception:
+    GITHUB_ENABLED = False
+
+GITHUB_API = "https://api.github.com"
+
+def gh_headers():
+    return {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+
+def gh_get_file(remote_path):
+    if not GITHUB_ENABLED:
+        return None, None
+    url = f"{GITHUB_API}/repos/{GITHUB_REPO}/contents/{remote_path}?ref={GITHUB_BRANCH}"
+    try:
+        r = requests.get(url, headers=gh_headers(), timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            content = base64.b64decode(data["content"])
+            return content, data["sha"]
+    except Exception:
+        pass
+    return None, None
+
+def gh_put_file(remote_path, content_bytes, message):
+    if not GITHUB_ENABLED:
+        return False
+    _, sha = gh_get_file(remote_path)
+    url = f"{GITHUB_API}/repos/{GITHUB_REPO}/contents/{remote_path}"
+    payload = {
+        "message": message,
+        "content": base64.b64encode(content_bytes).decode("utf-8"),
+        "branch": GITHUB_BRANCH,
+    }
+    if sha:
+        payload["sha"] = sha
+    try:
+        r = requests.put(url, headers=gh_headers(), json=payload, timeout=15)
+        return r.status_code in (200, 201)
+    except Exception:
+        return False
 
 # ---- Custom CSS ----
 st.markdown("""
@@ -60,9 +114,18 @@ except NameError:
 
 TEMPLATE_FILENAME = "@2.daily check aug26 ทุกวัน.XLSX"
 TEMPLATE_PATH = os.path.join(current_dir, TEMPLATE_FILENAME)
-
-# โฟลเดอร์/ไฟล์ สำหรับระบบจำข้อมูลอัตโนมัติ
 SAVED_DB_PATH = os.path.join(current_dir, 'saved_database_upload.xlsx')
+
+# 🔄 ระบบซิงค์ข้อมูลลง Local
+if GITHUB_ENABLED and not st.session_state.get("github_synced"):
+    with st.spinner("🔄 กำลังซิงค์ข้อมูลล่าสุดจาก GitHub..."):
+        content, _ = gh_get_file(f"{GITHUB_DATA_DIR}/saved_database_upload.xlsx")
+        if content:
+            with open(SAVED_DB_PATH, "wb") as f:
+                f.write(content)
+    st.session_state["github_synced"] = True
+elif not GITHUB_ENABLED:
+    st.warning("⚠️ ยังไม่ได้ตั้งค่า GitHub Secrets ข้อมูลจะไม่ถูกบันทึกข้ามการเปิดเว็บใหม่ (รันแบบ Local เท่านั้น)", icon="⚠️")
 
 # Load background template data
 @st.cache_data
@@ -80,7 +143,6 @@ def load_template_data(path):
 
 df_check_bg, df_ord_bg, df_fo_bg = load_template_data(TEMPLATE_PATH)
 
-# ฟังก์ชันสำหรับแปลง DataFrame เป็น Excel เพื่อให้ดาวน์โหลด
 @st.cache_data
 def convert_df_to_excel(df):
     output = BytesIO()
@@ -89,7 +151,6 @@ def convert_df_to_excel(df):
     processed_data = output.getvalue()
     return processed_data
 
-# --- ฟังก์ชันสร้างไฟล์ Template ตัวอย่างเพื่อใช้ดาวน์โหลด (ปรับโครงสร้างชีท FO ใหม่) ---
 @st.cache_data
 def generate_example_db_template():
     output = BytesIO()
@@ -168,6 +229,7 @@ with col_title:
 with col_date:
     st.markdown("🗓️ **ดู Balance ถึงวันที่**")
     target_date = st.date_input("", pd.to_datetime('2026-08-31'), label_visibility="collapsed")
+    target_date_dt = pd.to_datetime(target_date) # ดึงค่าวันที่ที่เลือกมาใช้คำนวณ
 
 with col_workday:
     st.markdown("⏱️ **Working Day (วัน)**")
@@ -177,14 +239,24 @@ with col_upload:
     st.markdown("📁 **อัปโหลดไฟล์ Database**")
     db_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed")
     
-    # --- ระบบจำไฟล์อัตโนมัติ (Fallback System) ---
+    # --- ระบบอัปโหลดและเซฟไฟล์ ---
     active_db_file = None
     if db_file is not None:
         active_db_file = db_file
         if st.button("💾 บันทึกไฟล์นี้ไว้ใช้รอบหน้า", use_container_width=True):
+            file_bytes = bytes(db_file.getbuffer())
             with open(SAVED_DB_PATH, "wb") as f:
-                f.write(db_file.getbuffer())
-            st.success("✅ บันทึกไฟล์เรียบร้อย! คราวหน้าไม่ต้องอัปโหลดซ้ำแล้วครับ")
+                f.write(file_bytes)
+            
+            if GITHUB_ENABLED:
+                with st.spinner("☁️ กำลังบันทึกไฟล์ขึ้น GitHub..."):
+                    ok = gh_put_file(f"{GITHUB_DATA_DIR}/saved_database_upload.xlsx", file_bytes, f"Auto-save db upload: {db_file.name}")
+                if ok:
+                    st.success("✅ บันทึกไฟล์ขึ้น GitHub เรียบร้อย!")
+                else:
+                    st.warning("⚠️ บันทึกลง local ได้ แต่ push ไป GitHub ไม่สำเร็จ")
+            else:
+                st.success("✅ บันทึกไฟล์ลงในระบบชั่วคราวเรียบร้อย!")
     elif os.path.exists(SAVED_DB_PATH):
         active_db_file = SAVED_DB_PATH
         st.caption("📌 กำลังแสดงผลจาก: **ไฟล์ที่บันทึกไว้ล่าสุด**")
@@ -200,19 +272,8 @@ with col_upload:
         use_container_width=True
     )
 
-# ---- ระบบตรวจจับและแจ้งเตือนข้อผิดพลาดเรื่องไฟล์ Template ----
 if df_check_bg is None or df_ord_bg is None:
     st.error(f"❌ ไม่พบไฟล์ Template ระบบพื้นหลัง")
-    st.markdown("### 🔍 ระบบช่วยวิเคราะห์ปัญหา (Debug Info):")
-    st.write(f"1. **โปรแกรมกำลังพยายามหาไฟล์ที่ตำแหน่งนี้:** `{TEMPLATE_PATH}`")
-    try:
-        available_files = [f for f in os.listdir(current_dir) if f.lower().endswith('.xlsx')]
-        if available_files:
-            st.write(f"2. **เจอไฟล์ Excel อื่นๆ ในโฟลเดอร์นี้ ได้แก่:**")
-            for f in available_files:
-                st.write(f"- `{f}`")
-    except Exception:
-        pass
     st.stop()
 
 # ---- การคำนวณ (ถ้ามีไฟล์ครบ) ----
@@ -223,23 +284,21 @@ if active_db_file:
         xls_db = pd.ExcelFile(active_db_file)
         sheet_names_lower = [str(s).lower() for s in xls_db.sheet_names]
         
-        # 1. อ่านชีทแรก (สต็อกปกติ / dali wip-fg)
+        # 1. อ่านชีทแรก
         df_db = pd.read_excel(xls_db, sheet_name=0) 
-        
         if 'Material' in df_db.columns:
             df_db['Material'] = df_db['Material'].astype(str).str.strip()
             df_db['Material'] = df_db['Material'].str.replace(r';A[12]$', '', regex=True)
-            
         stock_agg = df_db.groupby('Material')['Unrestricted'].sum().to_dict()
         
-        # 2. อ่านชีท 'ord' 
+        # 2. อ่านชีท 'ord'
         if 'ord' in sheet_names_lower:
             ord_sheet_name = xls_db.sheet_names[sheet_names_lower.index('ord')]
             df_ord = pd.read_excel(xls_db, sheet_name=ord_sheet_name, header=0)
         else:
             df_ord = df_ord_bg.copy()
             
-        # 3. อ่านชีท 'fo' เพื่อหา Max FO/ORD
+        # 3. อ่านชีท 'fo'
         df_fo = pd.DataFrame()
         max_fo_map = {}
         max_ord_map = {}
@@ -258,37 +317,31 @@ if active_db_file:
                 max_fo_map = dict(zip(df_fo['Material'], df_fo['Max_FO']))
                 max_ord_map = dict(zip(df_fo['Material'], df_fo['Max_ORD']))
         
-        # 4. อ่านชีท 'pro' เพื่อดึงสถานะการผลิต
+        # 4. อ่านชีท 'pro'
         machine_mapping = {}
         if 'pro' in sheet_names_lower:
             pro_sheet_name = xls_db.sheet_names[sheet_names_lower.index('pro')]
             df_pro = pd.read_excel(xls_db, sheet_name=pro_sheet_name, header=None)
-            
             if len(df_pro.columns) >= 3:
                 df_pro[0] = df_pro[0].astype(str).str.strip()
-                
                 def extract_machine(val):
                     if pd.isna(val): return ""
                     val_str = str(val).strip()
                     if val_str == '' or val_str.lower() == 'nan': return ""
                     parts = val_str.split('/')
-                    if len(parts) > 1:
-                        return parts[1].strip()
+                    if len(parts) > 1: return parts[1].strip()
                     return ""
                 
                 df_pro['extracted_machine'] = df_pro[2].apply(extract_machine)
                 df_pro_valid = df_pro[df_pro['extracted_machine'] != ""]
                 df_pro_unique = df_pro_valid.drop_duplicates(subset=[0, 'extracted_machine'])
-                machine_mapping = df_pro_unique.groupby(0)['extracted_machine'].apply(
-                    lambda x: ', '.join(filter(None, x))
-                ).to_dict()
+                machine_mapping = df_pro_unique.groupby(0)['extracted_machine'].apply(lambda x: ', '.join(filter(None, x))).to_dict()
         
         # --- คำนวณสต็อก ---
         df_check['fg'] = df_check['Material'].map(stock_agg).fillna(0)
         df_check['wip'] = df_check['Component'].map(stock_agg).fillna(0)
         df_check['Total'] = df_check['fg'] + df_check['wip']
         
-        target_date_dt = pd.to_datetime(target_date)
         ord_sum = {}
         date_insufficient = {}
         
@@ -319,17 +372,15 @@ if active_db_file:
         df_check['Short Date'] = df_check['Material'].map(date_insufficient)
         df_check['SCHE'] = df_check['Matl group'].fillna('Unknown')
         
-        # --- นำค่า Max ที่หาได้มาใส่ใน df_check หลัก ---
         df_check['Max FO'] = df_check['Material'].astype(str).str.strip().map(max_fo_map).fillna(0)
         df_check['Max ORD'] = df_check['Material'].astype(str).str.strip().map(max_ord_map).fillna(0)
         
-        # --- จับคู่สถานะการผลิต และ เครื่องจักร ---
+        # --- จับคู่สถานะการผลิต ---
         status_list = []
         machine_list = []
         for comp, mat in zip(df_check['Component'], df_check['Material']):
             comp_str = str(comp).strip() if pd.notna(comp) else ""
             mat_str = str(mat).strip() if pd.notna(mat) else ""
-            
             if comp_str.endswith('.0'): comp_str = comp_str[:-2]
             if mat_str.endswith('.0'): mat_str = mat_str[:-2]
             
@@ -381,65 +432,65 @@ if active_db_file:
         if not df_fo.empty and 'Material' in df_fo.columns:
             fo_materials = df_fo['Material'].dropna().astype(str).str.strip().unique()
             check_materials = df_check['Material'].dropna().astype(str).str.strip().unique()
-            
             missing_materials = [m for m in fo_materials if m not in check_materials and m != 'nan' and m != '']
-            missing_parts_count = len(missing_materials)
-            
-            if missing_parts_count > 0:
+            if len(missing_materials) > 0:
                 st.markdown(f'''
-                    <div class="alert-box">
-                        ⚠️ <b>แจ้งเตือนความเสี่ยงหลุดแผน:</b> พบ {missing_parts_count} Part ที่มีใน Sheet <b>"fo" (จากไฟล์อัปโหลด)</b> แต่ไม่ได้นำมาคำนวณใน Template <b>"check dali wipday"</b>
-                    </div>
+                    <div class="alert-box">⚠️ <b>แจ้งเตือนความเสี่ยงหลุดแผน:</b> พบ {len(missing_materials)} Part ที่มีใน Sheet <b>"fo"</b> แต่ไม่ได้นำมาคำนวณใน <b>"check dali wipday"</b></div>
                 ''', unsafe_allow_html=True)
-                
                 with st.expander("👉 คลิกเพื่อดูรายการ Part ที่ตกหล่น"):
                     cols_to_show = ['Material']
                     if 'Description' in df_fo.columns: cols_to_show.append('Description')
-                    
-                    missing_df = df_fo[df_fo['Material'].astype(str).str.strip().isin(missing_materials)][cols_to_show]
-                    missing_df = missing_df.drop_duplicates(subset=['Material'])
+                    missing_df = df_fo[df_fo['Material'].astype(str).str.strip().isin(missing_materials)][cols_to_show].drop_duplicates(subset=['Material'])
                     missing_df.columns = ['Part No. ที่ตกหล่น', 'รายละเอียด (Description)'][:len(cols_to_show)]
-                    
                     st.dataframe(missing_df, use_container_width=True, hide_index=True)
 
         # ---- สร้างการ์ดแสดงผล ----
         col_m1, col_m2, col_m3 = st.columns(3)
-        target_str = target_date_dt.strftime('%d/%m/%Y')
-        
         with col_m1:
-            st.markdown(f"""
-                <div class="metric-card red">
-                    <div class="metric-label">Part ที่ต้องระวัง (Short หรือ WIP<7)</div>
-                    <div class="metric-value">{total_short_parts:,}</div>
-                </div>
-            """, unsafe_allow_html=True)
-            
+            st.markdown(f'<div class="metric-card red"><div class="metric-label">Part ที่ต้องระวัง (Short หรือ WIP<7)</div><div class="metric-value">{total_short_parts:,}</div></div>', unsafe_allow_html=True)
         with col_m2:
-            st.markdown(f"""
-                <div class="metric-card orange">
-                    <div class="metric-label">จำนวน Order ค้างส่ง (ชิ้น)</div>
-                    <div class="metric-value">{total_orders_short:,}</div>
-                </div>
-            """, unsafe_allow_html=True)
-            
+            st.markdown(f'<div class="metric-card orange"><div class="metric-label">จำนวน Order ค้างส่ง (ชิ้น)</div><div class="metric-value">{total_orders_short:,}</div></div>', unsafe_allow_html=True)
         with col_m3:
-            st.markdown("""
-                <div class="metric-card green">
-                    <div class="metric-label">สถานะระบบ</div>
-                    <div class="metric-value" style="font-size:1.5rem; margin-top:0.8rem;">✨ ข้อมูลอัปเดตล่าสุด<br>(Live File)</div>
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown('<div class="metric-card green"><div class="metric-label">สถานะระบบ</div><div class="metric-value" style="font-size:1.5rem; margin-top:0.8rem;">✨ ข้อมูลอัปเดตล่าสุด<br>(Live File)</div></div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         
+        # ==========================================
+        # 🎨 ระบบไฮไลท์สีคอลัมน์ (Styling Functions)
+        # ==========================================
         def color_balance(val):
             color = 'red' if isinstance(val, (int, float)) and val < 0 else 'black'
             return f'color: {color}'
         
+        # สีสำหรับ WIP Day
         def color_wip(val):
-            color = 'red' if isinstance(val, (int, float)) and val < 7 else 'black'
-            return f'color: {color}'
-        
+            if pd.isna(val) or val == 999: return ''
+            try:
+                v = float(val)
+                if v < 4:
+                    return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # สีแดง
+                elif 4 <= v <= 7:
+                    return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # สีส้ม
+                else:
+                    return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # สีส้ม (มากกว่า 7 วัน)
+            except:
+                return ''
+
+        # สีสำหรับ Short Date (คำนวณระยะห่างจากวันที่ระบุใน Dashboard)
+        def color_short_date(val):
+            if str(val).strip() in ['-', 'OK', 'nan', 'NaT', '']: return ''
+            try:
+                s_dt = pd.to_datetime(val)
+                diff = (s_dt - target_date_dt).days
+                if diff < 4:
+                    return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # สีแดง
+                elif 4 <= diff <= 7:
+                    return 'background-color: #fef08a; color: #854d0e; font-weight: bold;' # สีเหลือง
+                else:
+                    return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # สีส้ม
+            except:
+                return ''
+                
         format_dict = {'WIP Day': '{:.2f}'}
 
         # --- ส่วนค้นหาหลาย Part พร้อมกัน ---
@@ -448,7 +499,6 @@ if active_db_file:
         
         if search_query:
             queries = [q.strip() for q in search_query.split(',') if q.strip()]
-            
             if queries:
                 search_mask = pd.Series(False, index=display_df_all.index)
                 for q in queries:
@@ -457,15 +507,16 @@ if active_db_file:
                     search_mask = search_mask | mask
                 
                 searched_df = display_df_all[search_mask]
-                
                 if not searched_df.empty:
                     try:
                         styled_search = searched_df.style.map(color_balance, subset=[balance_col_name])\
                                                     .map(color_wip, subset=['WIP Day'])\
+                                                    .map(color_short_date, subset=['Short Date'])\
                                                     .format(format_dict)
                     except AttributeError:
                         styled_search = searched_df.style.applymap(color_balance, subset=[balance_col_name])\
                                                     .applymap(color_wip, subset=['WIP Day'])\
+                                                    .applymap(color_short_date, subset=['Short Date'])\
                                                     .format(format_dict)
                     st.dataframe(styled_search, use_container_width=True, hide_index=True)
                 else:
@@ -480,10 +531,8 @@ if active_db_file:
             st.markdown("**แยกตามแผนก (SCHE)**")
             if not df_short.empty:
                 chart_data_sche = df_short.groupby('SCHE').size().reset_index(name='count')
-                fig_sche = px.pie(chart_data_sche, values='count', names='SCHE', hole=0.5,
-                             color_discrete_sequence=px.colors.qualitative.Pastel)
-                fig_sche.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-                                  margin=dict(t=0, b=0, l=0, r=0), height=300)
+                fig_sche = px.pie(chart_data_sche, values='count', names='SCHE', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
+                fig_sche.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=0, l=0, r=0), height=300)
                 fig_sche.update_traces(textposition='none')
                 st.plotly_chart(fig_sche, use_container_width=True)
                 
@@ -491,16 +540,11 @@ if active_db_file:
                 
                 st.markdown("**สถานะการผลิต**")
                 chart_data_status = df_short.groupby('status การผลิต').size().reset_index(name='count')
-                
                 color_map = {'ผลิต': '#10b981', 'ไม่ได้ผลิต': '#ef4444'}
-                
-                fig_status = px.pie(chart_data_status, values='count', names='status การผลิต', hole=0.5,
-                                    color='status การผลิต', color_discrete_map=color_map)
-                fig_status.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-                                  margin=dict(t=0, b=0, l=0, r=0), height=300)
+                fig_status = px.pie(chart_data_status, values='count', names='status การผลิต', hole=0.5, color='status การผลิต', color_discrete_map=color_map)
+                fig_status.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=0, l=0, r=0), height=300)
                 fig_status.update_traces(textposition='none')
                 st.plotly_chart(fig_status, use_container_width=True)
-                
             else:
                 st.info("ไม่มีรายการที่ Short หรือ WIP ต่ำกว่ากำหนด")
 
@@ -511,26 +555,21 @@ if active_db_file:
             
             with c_btn:
                 excel_data = convert_df_to_excel(df_short)
-                st.download_button(
-                    label="📥 ดาวน์โหลดไฟล์ Excel (ที่ Short)",
-                    data=excel_data,
-                    file_name=f"Production_Shortage_{target_date_dt.strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
+                st.download_button(label="📥 ดาวน์โหลดไฟล์ Excel (ที่ Short)", data=excel_data, file_name=f"Production_Shortage_{target_date_dt.strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
             
             try:
                 styled_df = df_short.style.map(color_balance, subset=[balance_col_name])\
-                                            .map(color_wip, subset=['WIP Day'])\
-                                            .format(format_dict)
+                                          .map(color_wip, subset=['WIP Day'])\
+                                          .map(color_short_date, subset=['Short Date'])\
+                                          .format(format_dict)
             except AttributeError:
                 styled_df = df_short.style.applymap(color_balance, subset=[balance_col_name])\
-                                            .applymap(color_wip, subset=['WIP Day'])\
-                                            .format(format_dict)
+                                          .applymap(color_wip, subset=['WIP Day'])\
+                                          .applymap(color_short_date, subset=['Short Date'])\
+                                          .format(format_dict)
             
             table_height = (len(df_short) + 1) * 35 + 10
-            if table_height < 150: 
-                table_height = 150
+            if table_height < 150: table_height = 150
                 
             st.dataframe(styled_df, use_container_width=True, height=table_height, hide_index=True)
 
