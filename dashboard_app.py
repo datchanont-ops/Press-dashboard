@@ -229,7 +229,7 @@ with col_title:
 with col_date:
     st.markdown("🗓️ **ดู Balance ถึงวันที่**")
     target_date = st.date_input("", pd.to_datetime('2026-08-31'), label_visibility="collapsed")
-    target_date_dt = pd.to_datetime(target_date) # ดึงค่าวันที่ที่เลือกมาใช้คำนวณ
+    target_date_dt = pd.to_datetime(target_date)
 
 with col_workday:
     st.markdown("⏱️ **Working Day (วัน)**")
@@ -401,12 +401,34 @@ if active_db_file:
         df_check['order avg/day'] = pd.to_numeric(df_check['total fo+30%'], errors='coerce').fillna(0) / working_days_input
         df_check['wip days value'] = np.where(df_check['order avg/day'] > 0, df_check['Total'] / df_check['order avg/day'], 999)
         
+        # ==========================================
+        # 🟢 ฟังก์ชันคำนวณ Status สัญลักษณ์สี (🔴 🟡 🟠)
+        # ==========================================
+        def determine_status_emoji(wip, short_dt):
+            diff = 9999
+            if pd.notna(short_dt):
+                diff = (short_dt - target_date_dt).days
+                
+            # เงื่อนไข: ถ้า WIP < 4 หรือ Short < 4 ➔ สีแดง
+            if wip < 4 or diff < 4:
+                return '1. 🔴'
+            # เงื่อนไข: ถ้า WIP 4-7 หรือ Short 4-7 ➔ สีเหลือง
+            elif (4 <= wip <= 7) or (4 <= diff <= 7):
+                return '2. 🟡'
+            # เงื่อนไข: นอกเหนือจากนั้น (WIP > 7 หรือ Short > 7) ➔ สีส้ม
+            else:
+                return '3. 🟠'
+
+        # สร้างคอลัมน์ใหม่สำหรับ Status Emoji โดยเฉพาะ
+        df_check['Status'] = df_check.apply(lambda r: determine_status_emoji(r['wip days value'], r['Short Date']), axis=1)
+        
         df_check = df_check.sort_values(by='Short Date', na_position='last')
         df_check['Short Date Format'] = df_check['Short Date'].dt.strftime('%Y-%m-%d').fillna('-')
         
-        # --- เตรียม Dataframe ทั้งหมด ---
+        # --- เตรียม Dataframe ทั้งหมด (นำคอลัมน์ Status ไว้ตำแหน่งแรก) ---
         balance_col_name = f'Balance ณ {target_date_dt.strftime("%d %b")}'
         display_df_all = pd.DataFrame({
+            'Status': df_check['Status'], # 👈 คอลัมน์สัญลักษณ์สี
             'SCHE': df_check['SCHE'],
             'Part No.': df_check['Component'],
             'Material': df_check['Material'],
@@ -456,38 +478,36 @@ if active_db_file:
         st.markdown("<br>", unsafe_allow_html=True)
         
         # ==========================================
-        # 🎨 ระบบไฮไลท์สีคอลัมน์ (Styling Functions)
+        # 🎨 ระบบไฮไลท์สีคอลัมน์ (ปรับเกณฑ์ตามความต้องการใหม่)
         # ==========================================
         def color_balance(val):
             color = 'red' if isinstance(val, (int, float)) and val < 0 else 'black'
             return f'color: {color}'
         
-        # สีสำหรับ WIP Day
         def color_wip(val):
             if pd.isna(val) or val == 999: return ''
             try:
                 v = float(val)
                 if v < 4:
-                    return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # สีแดง
+                    return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # 🔴
                 elif 4 <= v <= 7:
-                    return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # สีส้ม
+                    return 'background-color: #fef08a; color: #854d0e; font-weight: bold;' # 🟡
                 else:
-                    return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # สีส้ม (มากกว่า 7 วัน)
+                    return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # 🟠
             except:
                 return ''
 
-        # สีสำหรับ Short Date (คำนวณระยะห่างจากวันที่ระบุใน Dashboard)
         def color_short_date(val):
             if str(val).strip() in ['-', 'OK', 'nan', 'NaT', '']: return ''
             try:
                 s_dt = pd.to_datetime(val)
                 diff = (s_dt - target_date_dt).days
                 if diff < 4:
-                    return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # สีแดง
+                    return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # 🔴
                 elif 4 <= diff <= 7:
-                    return 'background-color: #fef08a; color: #854d0e; font-weight: bold;' # สีเหลือง
+                    return 'background-color: #fef08a; color: #854d0e; font-weight: bold;' # 🟡
                 else:
-                    return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # สีส้ม
+                    return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # 🟠
             except:
                 return ''
                 
@@ -571,7 +591,15 @@ if active_db_file:
             table_height = (len(df_short) + 1) * 35 + 10
             if table_height < 150: table_height = 150
                 
-            st.dataframe(styled_df, use_container_width=True, height=table_height, hide_index=True)
+            st.dataframe(
+                styled_df, 
+                use_container_width=True, 
+                height=table_height, 
+                hide_index=True,
+                column_config={
+                    "Status": st.column_config.TextColumn("Status", width="small") # บีบให้คอลัมน์ Status แคบลงเพื่อความสวยงาม
+                }
+            )
 
 else:
     st.markdown('<div class="metric-card" style="text-align:center; color:#6b7280; margin-top:2rem;">กรุณาอัปโหลดไฟล์ Database รายวัน หรือใช้ข้อมูลที่บันทึกไว้ เพื่อเริ่มการคำนวณ</div>', unsafe_allow_html=True)
