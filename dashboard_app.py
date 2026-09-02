@@ -401,12 +401,12 @@ if active_db_file:
             'WIP': df_check['wip'].astype(int),          # แยก WIP
             'FG': df_check['fg'].astype(int),            # แยก FG
             'รวม (WIP+FG)': df_check['Total'].astype(int), # รวมยอด
-            'Day': df_check['wip days value'],
-            'Max F/O': df_check['Max FO'].astype(int),
+            'WIP Day': df_check['wip days value'],
+            'Max FO': df_check['Max FO'].astype(int),
             'Max ORD': df_check['Max ORD'].astype(int),
             'Orders': df_check['Orders'].astype(int),
             balance_col_name: df_check['Balance'].astype(int),
-            'B/O Date': df_check['Short Date Format'],
+            'Short Date': df_check['Short Date Format'],
             'Note': df_check['note'].fillna('-') if 'note' in df_check.columns else '-',
             'status การผลิต': df_check['status การผลิต'],
             'เครื่องจักร': df_check['เครื่องจักร']
