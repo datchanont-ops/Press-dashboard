@@ -8,86 +8,47 @@ from io import BytesIO
 # ---- Page Config ----
 st.set_page_config(page_title="Production Shortage Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# ==========================================
-# 🎨 CSS Modern Corporate Styling
-# ==========================================
+# ---- Custom CSS ----
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
-    
-    * {
-        font-family: 'Prompt', sans-serif !important;
-    }
-    
-    /* พื้นหลังหลักสไตล์ Light Theme */
-    .stApp {
-        background-color: #f8fafc !important;
-    }
-    
-    /* ปรับแต่งกล่อง Metric / KPI Cards ให้ดูแพง */
-    [data-testid="stMetric"] {
-        background-color: #ffffff !important;
-        padding: 20px 24px !important;
-        border-radius: 12px !important;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.04) !important;
-        border: 1px solid #e2e8f0 !important;
-        border-top: 4px solid #3b82f6 !important;
-        position: relative !important;
-        transition: transform 0.2s ease;
-    }
-    [data-testid="stMetric"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 15px rgba(0,0,0,0.08) !important;
-    }
-    
-    /* สีของขอบบนการ์ดแต่ละใบ */
-    [data-testid="column"]:nth-child(1) [data-testid="stMetric"] { border-top-color: #ef4444 !important; } /* แดง */
-    [data-testid="column"]:nth-child(2) [data-testid="stMetric"] { border-top-color: #f59e0b !important; } /* ส้ม/เหลือง */
-    [data-testid="column"]:nth-child(3) [data-testid="stMetric"] { border-top-color: #10b981 !important; } /* เขียว */
-
-    /* ข้อความหัวข้อในการ์ด */
-    [data-testid="stMetricLabel"] > div {
-        color: #64748b !important;
-        font-size: 15px !important;
-        font-weight: 600 !important;
-    }
-    
-    /* ตัวเลขค่าสรุปในการ์ด */
-    [data-testid="stMetricValue"] > div {
-        color: #0f172a !important;
-        font-size: 32px !important;
-        font-weight: 700 !important;
-    }
-
-    /* กล่อง Header หลัก */
-    .dashboard-header {
-        background-color: #ffffff;
-        padding: 20px 28px;
-        border-radius: 12px;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-        margin-bottom: 20px;
-    }
-    
-    /* ปรับตาราง */
-    div[data-testid="stDataFrame"] {
-        background-color: #ffffff;
-        border-radius: 12px;
-        padding: 10px;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.02);
-    }
-    
-    .alert-box {
-        background-color: #fee2e2;
-        color: #b91c1c;
-        padding: 1rem 1.5rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-        font-weight: 500;
-        border-left: 5px solid #b91c1c;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
+        .main-header {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 1rem;
+        }
+        .metric-card {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-top: 4px solid;
+            text-align: left;
+        }
+        .metric-card.red { border-top-color: #ef4444; }
+        .metric-card.orange { border-top-color: #f97316; }
+        .metric-card.green { border-top-color: #10b981; }
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #1f2937;
+        }
+        .metric-label {
+            color: #6b7280;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .alert-box {
+            background-color: #fee2e2;
+            color: #b91c1c;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            font-weight: 500;
+            border-left: 5px solid #b91c1c;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -98,7 +59,7 @@ except NameError:
     current_dir = os.getcwd()
 
 # ==========================================
-# ⚙️ Sidebar: Settings
+# ⚙️ Sidebar: Google Drive & Local Save Path
 # ==========================================
 with st.sidebar:
     st.markdown("### ⚙️ ตั้งค่าระบบ (System Settings)")
@@ -107,6 +68,7 @@ with st.sidebar:
     default_save_path = os.path.join(current_dir, "data")
     save_path = st.text_input("📁 ตำแหน่งบันทึกข้อมูล (Save Path)", value=default_save_path)
     
+    # สร้างโฟลเดอร์ถ้ายังไม่มี
     os.makedirs(save_path, exist_ok=True)
     
     st.markdown("---")
@@ -116,6 +78,7 @@ SAVED_DB_PATH = os.path.join(save_path, 'saved_database_upload.xlsx')
 TEMPLATE_FILENAME = "@2.daily check aug26 ทุกวัน.XLSX"
 TEMPLATE_PATH = os.path.join(current_dir, TEMPLATE_FILENAME)
 
+# Load background template data
 @st.cache_data
 def load_template_data(path):
     if not os.path.exists(path):
@@ -136,7 +99,8 @@ def convert_df_to_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Shortage Report')
-    return output.getvalue()
+    processed_data = output.getvalue()
+    return processed_data
 
 @st.cache_data
 def generate_example_db_template():
@@ -197,51 +161,54 @@ def generate_example_db_template():
             'Posting Date': ['2026-08-11', '2026-08-11']
         })
         df_pro.to_excel(writer, index=False, sheet_name='pro')
+        
     return output.getvalue()
 
 # ---- Header Section ----
-col_title, col_date, col_workday, col_upload = st.columns([2.2, 0.8, 0.8, 1.2])
+col_title, col_date, col_workday, col_upload = st.columns([2, 1, 1, 1.2])
 
 with col_title:
     st.markdown("""
-        <div class="dashboard-header">
-            <h1 style="margin:0; font-size:26px; color:#0f172a;">📈 Production Shortage Dashboard</h1>
-            <p style="margin:0; color:#64748b; font-size:14px; margin-top:4px;">
-                ระบบแสดงผลข้อมูลและสถานะการ Short / WIP น้อยกว่ากำหนด (อัปเดตแบบเรียลไทม์)
+        <div class="main-header">
+            <h1 style="margin:0; font-size:1.8rem; color:#111827;">📈 Production Shortage Dashboard</h1>
+            <p style="margin:0; color:#6b7280; font-size:0.9rem; margin-top:0.5rem;">
+                แสดงผลข้อมูลและสถานะการ Short / WIP น้อยกว่ากำหนด เฉพาะช่วงเวลาที่เลือก
             </p>
         </div>
     """, unsafe_allow_html=True)
 
 with col_date:
-    st.markdown("<p style='font-weight:600; color:#475569; margin-bottom:5px;'>🗓️ ดู Balance ถึงวันที่</p>", unsafe_allow_html=True)
+    st.markdown("🗓️ **ดู Balance ถึงวันที่**")
     target_date = st.date_input("", pd.to_datetime('2026-08-31'), label_visibility="collapsed")
     target_date_dt = pd.to_datetime(target_date)
 
 with col_workday:
-    st.markdown("<p style='font-weight:600; color:#475569; margin-bottom:5px;'>⏱️ Working Day (วัน)</p>", unsafe_allow_html=True)
+    st.markdown("⏱️ **Working Day (วัน)**")
     working_days_input = st.number_input("", min_value=1.0, value=20.0, step=1.0, label_visibility="collapsed")
 
 with col_upload:
-    st.markdown("<p style='font-weight:600; color:#475569; margin-bottom:5px;'>📂 อัปโหลดไฟล์ Database</p>", unsafe_allow_html=True)
+    st.markdown("📁 **อัปโหลดไฟล์ Database**")
     db_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed")
     
+    # --- ระบบอัปโหลดและเซฟไฟล์ลง Local Path ---
     active_db_file = None
     if db_file is not None:
         active_db_file = db_file
-        if st.button("💾 บันทึกไฟล์นี้ลง Local/Drive", use_container_width=True):
+        if st.button("💾 บันทึกไฟล์นี้ลง Google Drive", use_container_width=True):
+            file_bytes = bytes(db_file.getbuffer())
             with open(SAVED_DB_PATH, "wb") as f:
-                f.write(bytes(db_file.getbuffer()))
-            st.success(f"✅ บันทึกไฟล์เรียบร้อย!")
+                f.write(file_bytes)
+            st.success(f"✅ บันทึกไฟล์เรียบร้อย! (ระบบจะ Sync ขึ้น Cloud ให้เอง)")
             
     elif os.path.exists(SAVED_DB_PATH):
         active_db_file = SAVED_DB_PATH
-        st.caption(f"📌 แสดงผลจากไฟล์บันทึกล่าสุด")
+        st.caption(f"📌 กำลังแสดงผลจากไฟล์ที่บันทึกไว้ใน:\n`{save_path}`")
         if st.button("🗑️ ล้างข้อมูลที่บันทึกไว้", use_container_width=True):
             os.remove(SAVED_DB_PATH)
             st.rerun()
 
     st.download_button(
-        label="📥 โหลดไฟล์ Template",
+        label="📥 ดาวน์โหลดไฟล์ Template อัปโหลด",
         data=generate_example_db_template(),
         file_name="Template_Database_Upload.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -252,10 +219,11 @@ if df_check_bg is None or df_ord_bg is None:
     st.error(f"❌ ไม่พบไฟล์ Template ระบบพื้นหลัง")
     st.stop()
 
-# ---- การคำนวณ ----
+# ---- การคำนวณ (ถ้ามีไฟล์ครบ) ----
 if active_db_file:
-    with st.spinner("กำลังประมวลผลข้อมูล..."):
+    with st.spinner("กำลังคำนวณข้อมูลเบื้องหลัง..."):
         df_check = df_check_bg.copy()
+        
         xls_db = pd.ExcelFile(active_db_file)
         sheet_names_lower = [str(s).lower() for s in xls_db.sheet_names]
         
@@ -376,37 +344,43 @@ if active_db_file:
         df_check['order avg/day'] = pd.to_numeric(df_check['total fo+30%'], errors='coerce').fillna(0) / working_days_input
         df_check['wip days value'] = np.where(df_check['order avg/day'] > 0, df_check['Total'] / df_check['order avg/day'], 999)
         
-        # 🟢 ฟังก์ชันคำนวณ Status สัญลักษณ์สี
+        # ==========================================
+        # 🟢 ฟังก์ชันคำนวณ Status สัญลักษณ์สี (🔴 🟡 🟠)
+        # ==========================================
         def determine_status_emoji(wip, short_dt):
             diff = 9999
             if pd.notna(short_dt):
                 diff = (short_dt - target_date_dt).days
                 
-            if wip < 4 or diff < 4: return '1. 🔴'
-            elif (4 <= wip <= 7) or (4 <= diff <= 7): return '2. 🟡'
-            else: return '3. 🟠'
+            # เงื่อนไข: ถ้า WIP < 4 หรือ Short < 4 ➔ สีแดง
+            if wip < 4 or diff < 4:
+                return '1. 🔴'
+            # เงื่อนไข: ถ้า WIP 4-7 หรือ Short 4-7 ➔ สีเหลือง
+            elif (4 <= wip <= 7) or (4 <= diff <= 7):
+                return '2. 🟡'
+            # เงื่อนไข: นอกเหนือจากนั้น (WIP > 7 หรือ Short > 7) ➔ สีส้ม
+            else:
+                return '3. 🟠'
 
         df_check['Status'] = df_check.apply(lambda r: determine_status_emoji(r['wip days value'], r['Short Date']), axis=1)
         
         df_check = df_check.sort_values(by='Short Date', na_position='last')
         df_check['Short Date Format'] = df_check['Short Date'].dt.strftime('%Y-%m-%d').fillna('-')
         
-        # --- เตรียม Dataframe ทั้งหมด (แยก WIP และ FG ตามที่ต้องการ) ---
+        # --- เตรียม Dataframe ทั้งหมด (นำคอลัมน์ Status ไว้ตำแหน่งแรก) ---
         balance_col_name = f'Balance ณ {target_date_dt.strftime("%d %b")}'
         display_df_all = pd.DataFrame({
             'Status': df_check['Status'], 
             'SCHE': df_check['SCHE'],
             'Part No.': df_check['Component'],
             'Material': df_check['Material'],
-            'WIP': df_check['wip'].astype(int),          # แยก WIP
-            'FG': df_check['fg'].astype(int),            # แยก FG
-            'รวม (WIP+FG)': df_check['Total'].astype(int), # รวมยอด
+            'WIP+FG': df_check['Total'].astype(int),
             'WIP Day': df_check['wip days value'],
             'Max FO': df_check['Max FO'].astype(int),
             'Max ORD': df_check['Max ORD'].astype(int),
             'Orders': df_check['Orders'].astype(int),
             balance_col_name: df_check['Balance'].astype(int),
-            'B/O Date': df_check['Short Date Format'],
+            'Short Date': df_check['Short Date Format'],
             'Note': df_check['note'].fillna('-') if 'note' in df_check.columns else '-',
             'status การผลิต': df_check['status การผลิต'],
             'เครื่องจักร': df_check['เครื่องจักร']
@@ -434,32 +408,34 @@ if active_db_file:
                     missing_df.columns = ['Part No. ที่ตกหล่น', 'รายละเอียด (Description)'][:len(cols_to_show)]
                     st.dataframe(missing_df, use_container_width=True, hide_index=True)
 
-        # ---- สร้างการ์ดแสดงผล (ใช้ Native Metric แบบ Modern) ----
-        st.markdown("<div style='margin-bottom: -15px;'></div>", unsafe_allow_html=True)
+        # ---- สร้างการ์ดแสดงผล ----
         col_m1, col_m2, col_m3 = st.columns(3)
         with col_m1:
-            st.metric("Part ที่ต้องระวัง (Short หรือ WIP<7)", f"{total_short_parts:,}")
+            st.markdown(f'<div class="metric-card red"><div class="metric-label">Part ที่ต้องระวัง (Short หรือ WIP<7)</div><div class="metric-value">{total_short_parts:,}</div></div>', unsafe_allow_html=True)
         with col_m2:
-            st.metric("จำนวน Order ค้างส่ง (ชิ้น)", f"{total_orders_short:,}")
+            st.markdown(f'<div class="metric-card orange"><div class="metric-label">จำนวน Order ค้างส่ง (ชิ้น)</div><div class="metric-value">{total_orders_short:,}</div></div>', unsafe_allow_html=True)
         with col_m3:
-            st.metric("สถานะระบบ", "✨ ข้อมูลอัปเดตล่าสุด" if db_file is not None else "🕒 ข้อมูลบันทึกล่าสุด")
+            st.markdown('<div class="metric-card green"><div class="metric-label">สถานะระบบ</div><div class="metric-value" style="font-size:1.5rem; margin-top:0.8rem;">✨ ข้อมูลอัปเดตล่าสุด<br>(Live File)</div></div>', unsafe_allow_html=True)
+
         st.markdown("<br>", unsafe_allow_html=True)
         
         # ==========================================
-        # 🎨 ระบบไฮไลท์สีคอลัมน์ตาราง
+        # 🎨 ระบบไฮไลท์สีคอลัมน์ (ปรับเกณฑ์ตามความต้องการใหม่)
         # ==========================================
         def color_balance(val):
-            color = '#b91c1c' if isinstance(val, (int, float)) and val < 0 else '#10b981'
-            weight = 'bold' if isinstance(val, (int, float)) and val < 0 else 'normal'
-            return f'color: {color}; font-weight: {weight};'
+            color = 'red' if isinstance(val, (int, float)) and val < 0 else 'black'
+            return f'color: {color}'
         
         def color_wip(val):
             if pd.isna(val) or val == 999: return ''
             try:
                 v = float(val)
-                if v < 4: return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # 🔴
-                elif 4 <= v <= 7: return 'background-color: #fef08a; color: #854d0e; font-weight: bold;' # 🟡
-                else: return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # 🟠
+                if v < 4:
+                    return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # 🔴
+                elif 4 <= v <= 7:
+                    return 'background-color: #fef08a; color: #854d0e; font-weight: bold;' # 🟡
+                else:
+                    return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # 🟠
             except:
                 return ''
 
@@ -468,16 +444,19 @@ if active_db_file:
             try:
                 s_dt = pd.to_datetime(val)
                 diff = (s_dt - target_date_dt).days
-                if diff < 4: return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # 🔴
-                elif 4 <= diff <= 7: return 'background-color: #fef08a; color: #854d0e; font-weight: bold;' # 🟡
-                else: return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # 🟠
+                if diff < 4:
+                    return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # 🔴
+                elif 4 <= diff <= 7:
+                    return 'background-color: #fef08a; color: #854d0e; font-weight: bold;' # 🟡
+                else:
+                    return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # 🟠
             except:
                 return ''
                 
         format_dict = {'WIP Day': '{:.2f}'}
 
         # --- ส่วนค้นหาหลาย Part พร้อมกัน ---
-        st.markdown("<h3 style='color:#1e293b; font-size:18px;'>🔍 ค้นหาสถานะ Part ข้อมูลทั้งหมด (เทียบหลายรายการได้)</h3>", unsafe_allow_html=True)
+        st.markdown("### 🔍 ค้นหาสถานะ Part ข้อมูลทั้งหมด (เทียบหลายรายการได้)")
         search_query = st.text_input("พิมพ์รหัส Part No. หรือ Material (คั่นด้วยลูกน้ำ ',' หากต้องการเทียบหลายตัว เช่น 1184469, BZ130)", "")
         
         if search_query:
@@ -505,41 +484,40 @@ if active_db_file:
                 else:
                     st.warning(f"❌ ไม่พบข้อมูล Part ที่ตรงกับ '{search_query}' ในฐานข้อมูล")
 
-        st.markdown("<hr style='margin-top:20px; margin-bottom:20px;'>", unsafe_allow_html=True)
+        st.markdown("<hr>", unsafe_allow_html=True)
 
         # --- ส่วนแสดงกราฟและตาราง Part ที่ต้องระวัง ---
         col_chart, col_table = st.columns([1, 2.5]) 
         
         with col_chart:
-            st.markdown("<h3 style='color:#1e293b; font-size:16px;'>แยกตามแผนก (SCHE)</h3>", unsafe_allow_html=True)
+            st.markdown("**แยกตามแผนก (SCHE)**")
             if not df_short.empty:
-                sche_counts = df_short.groupby('SCHE').size().reset_index(name='count')
-                custom_colors = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899']
-                fig_sche = px.pie(sche_counts, values='count', names='SCHE', hole=0.55, color_discrete_sequence=custom_colors)
-                fig_sche.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=10, b=10, l=10, r=10), height=320, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-                fig_sche.update_traces(textposition='none', hoverinfo='label+percent')
+                chart_data_sche = df_short.groupby('SCHE').size().reset_index(name='count')
+                fig_sche = px.pie(chart_data_sche, values='count', names='SCHE', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
+                fig_sche.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=0, l=0, r=0), height=300)
+                fig_sche.update_traces(textposition='none')
                 st.plotly_chart(fig_sche, use_container_width=True)
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                st.markdown("<h3 style='color:#1e293b; font-size:16px;'>สถานะการผลิต</h3>", unsafe_allow_html=True)
+                st.markdown("**สถานะการผลิต**")
                 chart_data_status = df_short.groupby('status การผลิต').size().reset_index(name='count')
                 color_map = {'ผลิต': '#10b981', 'ไม่ได้ผลิต': '#ef4444'}
-                fig_status = px.pie(chart_data_status, values='count', names='status การผลิต', hole=0.55, color='status การผลิต', color_discrete_map=color_map)
-                fig_status.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=10, b=10, l=10, r=10), height=320, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-                fig_status.update_traces(textposition='none', hoverinfo='label+percent')
+                fig_status = px.pie(chart_data_status, values='count', names='status การผลิต', hole=0.5, color='status การผลิต', color_discrete_map=color_map)
+                fig_status.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=0, l=0, r=0), height=300)
+                fig_status.update_traces(textposition='none')
                 st.plotly_chart(fig_status, use_container_width=True)
             else:
-                st.success("🎉 ไม่มีรายการที่ Short หรือ WIP ต่ำกว่ากำหนด")
+                st.info("ไม่มีรายการที่ Short หรือ WIP ต่ำกว่ากำหนด")
 
         with col_table:
-            c_header, c_btn = st.columns([2.5, 1])
+            c_header, c_btn = st.columns([2, 1])
             with c_header:
-                st.markdown("<h3 style='color:#1e293b; font-size:18px;'>รายการ Part ที่ติดลบ (Short Date) หรือ WIP < 7 วัน</h3>", unsafe_allow_html=True)
+                st.markdown("**รายการ Part ที่ติดลบ (Short Date) หรือ WIP < 7 วัน**")
             
             with c_btn:
                 excel_data = convert_df_to_excel(df_short)
-                st.download_button(label="📥 โหลดไฟล์ Excel", data=excel_data, file_name=f"Production_Shortage_{target_date_dt.strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                st.download_button(label="📥 ดาวน์โหลดไฟล์ Excel (ที่ Short)", data=excel_data, file_name=f"Production_Shortage_{target_date_dt.strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
             
             try:
                 styled_df = df_short.style.map(color_balance, subset=[balance_col_name])\
@@ -553,7 +531,7 @@ if active_db_file:
                                           .format(format_dict)
             
             table_height = (len(df_short) + 1) * 35 + 10
-            if table_height < 250: table_height = 250
+            if table_height < 150: table_height = 150
                 
             st.dataframe(
                 styled_df, 
@@ -561,12 +539,9 @@ if active_db_file:
                 height=table_height, 
                 hide_index=True,
                 column_config={
-                    "Status": st.column_config.TextColumn("Status", width="small"),
-                    "WIP": st.column_config.NumberColumn("WIP", format="%d"),
-                    "FG": st.column_config.NumberColumn("FG", format="%d"),
-                    "รวม (WIP+FG)": st.column_config.NumberColumn("รวม", format="%d")
+                    "Status": st.column_config.TextColumn("Status", width="small") # บีบให้คอลัมน์ Status แคบลงเพื่อความสวยงาม
                 }
             )
 
 else:
-    st.info("👋 กรุณาอัปโหลดไฟล์ Database รายวัน หรือใช้ข้อมูลที่บันทึกไว้ เพื่อเริ่มต้นวิเคราะห์ข้อมูล")
+    st.markdown('<div class="metric-card" style="text-align:center; color:#6b7280; margin-top:2rem;">กรุณาอัปโหลดไฟล์ Database รายวัน หรือใช้ข้อมูลที่บันทึกไว้ เพื่อเริ่มการคำนวณ</div>', unsafe_allow_html=True)
