@@ -9,99 +9,152 @@ from io import BytesIO
 st.set_page_config(page_title="Production Shortage Pro", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# 🎨 CSS Enterprise / Corporate Styling
+# 🎨 CSS Enterprise / Executive Dashboard Styling
 # ==========================================
 st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-    @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
-    
-    * {
-        font-family: 'Prompt', 'Inter', sans-serif !important;
-    }
-    
-    /* พื้นหลังหลัก (Light Slate) */
-    .stApp {
-        background-color: #f8fafc !important;
-    }
-    
-    /* กล่อง Header หลัก */
-    .dashboard-header {
-        background-color: #ffffff;
-        padding: 1.8rem 2rem;
-        border-radius: 12px;
-        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.03);
-        border: 1px solid #f1f5f9;
-        margin-bottom: 1.5rem;
-    }
-    
-    /* Modern Metric Cards พร้อม Gradient Border ด้านซ้าย */
-    [data-testid="stMetric"] {
-        background-color: #ffffff !important;
-        padding: 20px 24px !important;
-        border-radius: 12px !important;
-        box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.03) !important;
-        border: 1px solid #f1f5f9 !important;
-        position: relative !important;
-        overflow: hidden !important;
-        transition: transform 0.2s ease, box-shadow 0.2s ease !important;
-    }
-    [data-testid="stMetric"]:hover {
-        transform: translateY(-3px) !important;
-        box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.06) !important;
-    }
-    [data-testid="stMetric"]::before {
-        content: ''; 
-        position: absolute; 
-        top: 0; 
-        left: 0; 
-        width: 5px; 
-        height: 100%;
-    }
-    
-    /* โทนสีของแถบการ์ดแต่ละใบ */
-    div[data-testid="column"]:nth-child(1) [data-testid="stMetric"]::before { background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%); } /* Red */
-    div[data-testid="column"]:nth-child(2) [data-testid="stMetric"]::before { background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%); } /* Amber */
-    div[data-testid="column"]:nth-child(3) [data-testid="stMetric"]::before { background: linear-gradient(180deg, #10b981 0%, #047857 100%); } /* Emerald */
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap');
 
-    /* Typography ใน KPI Cards */
-    [data-testid="stMetricLabel"] > div {
-        color: #64748b !important;
-        font-size: 15px !important;
-        font-weight: 600 !important;
-    }
-    [data-testid="stMetricValue"] > div {
-        color: #0f172a !important;
-        font-size: 34px !important;
-        font-weight: 800 !important;
-        letter-spacing: -0.02em !important;
-    }
+:root {
+    --navy:#0f172a; --slate:#475569; --muted:#64748b;
+    --line:#e2e8f0; --surface:#ffffff; --bg:#f1f5f9;
+    --blue:#2563eb; --red:#dc2626; --amber:#d97706; --green:#059669;
+}
+* { font-family:'Prompt','Inter',sans-serif !important; }
+.stApp { background:#f1f5f9 !important; }
+#MainMenu, footer { visibility:hidden; }
+header[data-testid="stHeader"] { background:transparent !important; }
+.block-container {
+    padding-top:1.25rem !important;
+    padding-bottom:2rem !important;
+    max-width:1500px !important;
+}
 
-    /* ปรับแต่งกรอบตาราง Dataframe */
-    div[data-testid="stDataFrame"] {
-        background-color: #ffffff;
-        border-radius: 12px;
-        padding: 15px;
-        border: 1px solid #f1f5f9;
-        box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.02);
-    }
-    
-    /* กล่อง Alert เตือนภัย */
-    .alert-box {
-        background-color: #fef2f2;
-        color: #991b1b;
-        padding: 1rem 1.5rem;
-        border-radius: 8px;
-        margin-bottom: 1.5rem;
-        font-weight: 500;
-        border-left: 4px solid #ef4444;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-    }
-    
-    /* Text Styles */
-    h3, h4 { color: #1e293b !important; font-weight: 700 !important; letter-spacing: -0.01em; }
-    p.input-label { font-weight: 600; color: #475569; margin-bottom: 4px; font-size: 14px; }
-    </style>
+/* Executive Header */
+.dashboard-header {
+    background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);
+    padding:1.45rem 1.7rem;
+    border-radius:16px;
+    box-shadow:0 10px 28px rgba(15,23,42,.12);
+    border:1px solid rgba(255,255,255,.08);
+    margin-bottom:.75rem;
+    min-height:105px;
+}
+.dashboard-header h1 {
+    color:#fff !important;
+    font-size:27px !important;
+    font-weight:800 !important;
+    margin:0 !important;
+    letter-spacing:-.02em;
+}
+.dashboard-header p {
+    color:#cbd5e1 !important;
+    font-size:13px !important;
+    margin:5px 0 0 !important;
+}
+
+/* Controls */
+[data-testid="stDateInput"],
+[data-testid="stNumberInput"],
+[data-testid="stFileUploader"] {
+    background:#fff;
+    border-radius:10px;
+}
+p.input-label {
+    font-weight:600;
+    color:#334155;
+    margin:0 0 5px 2px;
+    font-size:13px;
+}
+.stButton > button, .stDownloadButton > button {
+    border-radius:9px !important;
+    font-weight:600 !important;
+    min-height:38px !important;
+    border:1px solid #cbd5e1 !important;
+    transition:all .18s ease !important;
+}
+.stButton > button:hover, .stDownloadButton > button:hover {
+    transform:translateY(-1px);
+    box-shadow:0 5px 14px rgba(15,23,42,.10);
+}
+
+/* KPI Cards */
+[data-testid="stMetric"] {
+    background:#fff !important;
+    padding:17px 20px !important;
+    border-radius:14px !important;
+    box-shadow:0 5px 18px rgba(15,23,42,.06) !important;
+    border:1px solid #e2e8f0 !important;
+    position:relative !important;
+    overflow:hidden !important;
+    transition:transform .18s ease,box-shadow .18s ease !important;
+    min-height:112px;
+}
+[data-testid="stMetric"]:hover {
+    transform:translateY(-2px) !important;
+    box-shadow:0 9px 25px rgba(15,23,42,.10) !important;
+}
+[data-testid="stMetric"]::before {
+    content:'';
+    position:absolute;
+    left:0; top:0; width:5px; height:100%;
+}
+div[data-testid="column"]:nth-child(1) [data-testid="stMetric"]::before { background:#dc2626; }
+div[data-testid="column"]:nth-child(2) [data-testid="stMetric"]::before { background:#d97706; }
+div[data-testid="column"]:nth-child(3) [data-testid="stMetric"]::before { background:#059669; }
+[data-testid="stMetricLabel"] > div {
+    color:#64748b !important;
+    font-size:13px !important;
+    font-weight:600 !important;
+}
+[data-testid="stMetricValue"] > div {
+    color:#0f172a !important;
+    font-size:29px !important;
+    font-weight:800 !important;
+    letter-spacing:-.025em !important;
+}
+
+/* Sections / Alerts / Tables */
+h3,h4 { color:#0f172a !important; font-weight:700 !important; letter-spacing:-.01em; }
+.alert-box {
+    background:#fff7ed;
+    color:#9a3412;
+    padding:.85rem 1.1rem;
+    border-radius:10px;
+    margin-bottom:1rem;
+    font-weight:500;
+    border:1px solid #fed7aa;
+    border-left:5px solid #f97316;
+}
+div[data-testid="stDataFrame"] {
+    background:#fff;
+    border-radius:14px;
+    padding:5px;
+    border:1px solid #e2e8f0;
+    box-shadow:0 5px 18px rgba(15,23,42,.05);
+}
+[data-testid="stTextInput"] > div > div {
+    border-radius:10px !important;
+    background:#fff !important;
+    border:1px solid #cbd5e1 !important;
+}
+[data-testid="stTextInput"] input { font-size:14px !important; }
+[data-testid="stExpander"] {
+    background:#fff !important;
+    border:1px solid #e2e8f0 !important;
+    border-radius:10px !important;
+}
+[data-testid="stAlert"] { border-radius:10px !important; }
+hr {
+    border:none !important;
+    border-top:1px solid #e2e8f0 !important;
+    margin:1.1rem 0 !important;
+}
+@media (max-width:900px) {
+    .dashboard-header { padding:1.1rem 1.2rem; }
+    .dashboard-header h1 { font-size:22px !important; }
+}
+</style>
 """, unsafe_allow_html=True)
 
 # ---- Data Processing Logic ----
