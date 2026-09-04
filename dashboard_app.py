@@ -6,88 +6,101 @@ import plotly.express as px
 from io import BytesIO
 
 # ---- Page Config ----
-st.set_page_config(page_title="Production Shortage Dashboard", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Production Shortage Pro", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# 🎨 CSS Modern Corporate Styling
+# 🎨 CSS Enterprise / Corporate Styling
 # ==========================================
 st.markdown("""
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
     @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
     
     * {
-        font-family: 'Prompt', sans-serif !important;
+        font-family: 'Prompt', 'Inter', sans-serif !important;
     }
     
-    /* พื้นหลังหลักสไตล์ Light Theme */
+    /* พื้นหลังหลัก (Light Slate) */
     .stApp {
         background-color: #f8fafc !important;
     }
     
-    /* ปรับแต่งกล่อง Metric / KPI Cards ให้ดูแพง */
+    /* กล่อง Header หลัก */
+    .dashboard-header {
+        background-color: #ffffff;
+        padding: 1.8rem 2rem;
+        border-radius: 12px;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.03);
+        border: 1px solid #f1f5f9;
+        margin-bottom: 1.5rem;
+    }
+    
+    /* Modern Metric Cards พร้อม Gradient Border ด้านซ้าย */
     [data-testid="stMetric"] {
         background-color: #ffffff !important;
         padding: 20px 24px !important;
         border-radius: 12px !important;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.04) !important;
-        border: 1px solid #e2e8f0 !important;
-        border-top: 4px solid #3b82f6 !important;
+        box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.03) !important;
+        border: 1px solid #f1f5f9 !important;
         position: relative !important;
-        transition: transform 0.2s ease;
+        overflow: hidden !important;
+        transition: transform 0.2s ease, box-shadow 0.2s ease !important;
     }
     [data-testid="stMetric"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 15px rgba(0,0,0,0.08) !important;
+        transform: translateY(-3px) !important;
+        box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.06) !important;
+    }
+    [data-testid="stMetric"]::before {
+        content: ''; 
+        position: absolute; 
+        top: 0; 
+        left: 0; 
+        width: 5px; 
+        height: 100%;
     }
     
-    /* สีของขอบบนการ์ดแต่ละใบ */
-    [data-testid="column"]:nth-child(1) [data-testid="stMetric"] { border-top-color: #ef4444 !important; } /* แดง */
-    [data-testid="column"]:nth-child(2) [data-testid="stMetric"] { border-top-color: #f59e0b !important; } /* ส้ม/เหลือง */
-    [data-testid="column"]:nth-child(3) [data-testid="stMetric"] { border-top-color: #10b981 !important; } /* เขียว */
+    /* โทนสีของแถบการ์ดแต่ละใบ */
+    div[data-testid="column"]:nth-child(1) [data-testid="stMetric"]::before { background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%); } /* Red */
+    div[data-testid="column"]:nth-child(2) [data-testid="stMetric"]::before { background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%); } /* Amber */
+    div[data-testid="column"]:nth-child(3) [data-testid="stMetric"]::before { background: linear-gradient(180deg, #10b981 0%, #047857 100%); } /* Emerald */
 
-    /* ข้อความหัวข้อในการ์ด */
+    /* Typography ใน KPI Cards */
     [data-testid="stMetricLabel"] > div {
         color: #64748b !important;
         font-size: 15px !important;
         font-weight: 600 !important;
     }
-    
-    /* ตัวเลขค่าสรุปในการ์ด */
     [data-testid="stMetricValue"] > div {
         color: #0f172a !important;
-        font-size: 32px !important;
-        font-weight: 700 !important;
+        font-size: 34px !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.02em !important;
     }
 
-    /* กล่อง Header หลัก */
-    .dashboard-header {
-        background-color: #ffffff;
-        padding: 20px 28px;
-        border-radius: 12px;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-        margin-bottom: 20px;
-    }
-    
-    /* ปรับตาราง */
+    /* ปรับแต่งกรอบตาราง Dataframe */
     div[data-testid="stDataFrame"] {
         background-color: #ffffff;
         border-radius: 12px;
-        padding: 10px;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+        padding: 15px;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.02);
     }
     
+    /* กล่อง Alert เตือนภัย */
     .alert-box {
-        background-color: #fee2e2;
-        color: #b91c1c;
+        background-color: #fef2f2;
+        color: #991b1b;
         padding: 1rem 1.5rem;
         border-radius: 8px;
-        margin-bottom: 1rem;
+        margin-bottom: 1.5rem;
         font-weight: 500;
-        border-left: 5px solid #b91c1c;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-left: 4px solid #ef4444;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
+    
+    /* Text Styles */
+    h3, h4 { color: #1e293b !important; font-weight: 700 !important; letter-spacing: -0.01em; }
+    p.input-label { font-weight: 600; color: #475569; margin-bottom: 4px; font-size: 14px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -128,62 +141,10 @@ def convert_df_to_excel(df):
 def generate_example_db_template():
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_wip = pd.DataFrame({
-            'Material': ['xxx1', 'xxx2;A1', 'xxx2;A2'], 
-            'Plant': [1200, 1200, 1200],
-            'Storage Location': [1201, 1201, 1201],
-            'DF stor. loc. level': ['', '', ''],
-            'Base Unit of Measure': ['PC', 'PC', 'PC'],
-            'Unrestricted': [0, 1000, 388]
-        })
-        df_wip.to_excel(writer, index=False, sheet_name='dali wip-fg')
-        
-        df_ord = pd.DataFrame({
-            'Customer': ['0000100013', '0000100013'],
-            'Name': ['ASIAN HONDA MOTOR CO.,LTD', 'ASIAN HONDA MOTOR CO.,LTD'],
-            'SAP Mat.': ['xxx', 'xxx2'],
-            'Cust.Mat.': ['abc', 'cae'],
-            'Base Qty': [20, 12],
-            'Outstd.Base Qty': [20, 5],
-            'Dlv. Date': ['2026-08-07', '2026-08-14'],
-            'On Hand': [17, 0],
-            'Wait Ins.(Unr)': [0, 0],
-            'Group': ['F-PUNCH', 'F-RP'],
-            'Create Date': ['2026-07-16', '2026-07-16'],
-            'Order': ['0002240801', '0002240813']
-        })
-        df_ord.to_excel(writer, index=False, sheet_name='ord')
-        
-        df_fo = pd.DataFrame({
-            'Cust.Code': ['123', '1234'],
-            'Name': ['x', 'x'],
-            'Material': ['xxx1', 'xxx2'],
-            'Description': ['aaa', 'bbb'],
-            'Mat.Group': ['F-PUNCH', 'F-RP'],
-            'Mat.Group4': ['PRESS', 'PRESS'],
-            'Cust.Group Name': ['Spare parts', 'Spare parts'],
-            'FO(Pcs)-08.2026': [0, 19],
-            'ORD(Pcs)-08.2026': [20, 29],
-            'FO(Pcs)-09.2026': [10, 25],
-            'ORD(Pcs)-09.2026': [15, 35]
-        })
-        df_fo.to_excel(writer, index=False, sheet_name='fo')
-        
-        df_pro = pd.DataFrame({
-            'Material': ['xxxx', 'xxxx1'],
-            'Material Description': ['abc', 'aaa'],
-            'Document Header Text': ['1/INJ_17/A/3/20260801', '1/INJ_88/A/2/20260805'],
-            'Batch': ['', ''],
-            'Storage Location': ['PP01', 'PP01'],
-            'Movement Type': [131, 131],
-            'Qty in Un. of Entry': [126, 72],
-            'Unit of Entry': ['PC', 'PC'],
-            'Amount in LC': ['', ''],
-            'Material Document': ['4957809142', '4957800488'],
-            'Posting Date': ['2026-08-11', '2026-08-11']
-        })
-        df_pro.to_excel(writer, index=False, sheet_name='pro')
-        
+        pd.DataFrame({'Material': ['xxx1'], 'Unrestricted': [0]}).to_excel(writer, index=False, sheet_name='dali wip-fg')
+        pd.DataFrame({'SAP Mat.': ['xxx'], 'Outstd.Base Qty': [20], 'Dlv. Date': ['2026-08-07']}).to_excel(writer, index=False, sheet_name='ord')
+        pd.DataFrame({'Material': ['xxx1'], 'FO(Pcs)-08.2026': [0], 'ORD(Pcs)-08.2026': [20]}).to_excel(writer, index=False, sheet_name='fo')
+        pd.DataFrame({0: ['xxxx'], 2: ['1/INJ_17/A/3/20260801']}).to_excel(writer, index=False, sheet_name='pro')
     return output.getvalue()
 
 # ---- Header Section ----
@@ -192,39 +153,36 @@ col_title, col_date, col_workday, col_upload = st.columns([2.2, 0.8, 0.8, 1.2])
 with col_title:
     st.markdown("""
         <div class="dashboard-header">
-            <h1 style="margin:0; font-size:26px; color:#0f172a;">📈 Production Shortage Dashboard</h1>
-            <p style="margin:0; color:#64748b; font-size:14px; margin-top:4px;">
-                ระบบแสดงผลข้อมูลและสถานะการ B/O / WIP น้อยกว่ากำหนด (อัปเดตแบบเรียลไทม์)
-            </p>
+            <h1 style="margin:0; font-size:26px; color:#0f172a; font-weight:800;">📈 Production Shortage Dashboard</h1>
+            <p style="margin:0; color:#64748b; font-size:14px; margin-top:6px;">ระบบประเมินความเสี่ยงและติดตามสถานะ B/O Date ระดับองค์กร</p>
         </div>
     """, unsafe_allow_html=True)
 
 with col_date:
-    st.markdown("<p style='font-weight:600; color:#475569; margin-bottom:5px;'>🗓️ ดู Balance ถึงวันที่</p>", unsafe_allow_html=True)
+    st.markdown("<p class='input-label'>🗓️ ดู Balance ถึงวันที่</p>", unsafe_allow_html=True)
     target_date = st.date_input("", pd.to_datetime('2026-08-31'), label_visibility="collapsed")
     target_date_dt = pd.to_datetime(target_date)
 
 with col_workday:
-    st.markdown("<p style='font-weight:600; color:#475569; margin-bottom:5px;'>⏱️ Working Day (วัน)</p>", unsafe_allow_html=True)
+    st.markdown("<p class='input-label'>⏱️ Working Day (วัน)</p>", unsafe_allow_html=True)
     working_days_input = st.number_input("", min_value=1.0, value=20.0, step=1.0, label_visibility="collapsed")
 
 with col_upload:
-    st.markdown("<p style='font-weight:600; color:#475569; margin-bottom:5px;'>📂 อัปโหลดไฟล์ Database</p>", unsafe_allow_html=True)
+    st.markdown("<p class='input-label'>📂 อัปโหลดไฟล์ Database</p>", unsafe_allow_html=True)
     db_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed")
     
-    # --- ระบบอัปโหลดและเซฟไฟล์ ---
     active_db_file = None
     if db_file is not None:
         active_db_file = db_file
-        if st.button("💾 บันทึกไฟล์นี้ไว้ใช้รอบหน้า", use_container_width=True):
+        if st.button("💾 บันทึกไฟล์นี้เป็นค่าเริ่มต้น", use_container_width=True, type="primary"):
             with open(SAVED_DB_PATH, "wb") as f:
                 f.write(bytes(db_file.getbuffer()))
-            st.success(f"✅ บันทึกไฟล์ลงระบบเรียบร้อย!")
+            st.success(f"✅ บันทึกข้อมูลเรียบร้อย!")
             
     elif os.path.exists(SAVED_DB_PATH):
         active_db_file = SAVED_DB_PATH
-        st.caption(f"📌 แสดงผลจากไฟล์บันทึกล่าสุด")
-        if st.button("🗑️ ล้างข้อมูลที่บันทึกไว้", use_container_width=True):
+        st.caption(f"📌 แสดงผลจากฐานข้อมูลล่าสุด")
+        if st.button("🗑️ ล้างข้อมูลไฟล์ระบบ", use_container_width=True):
             os.remove(SAVED_DB_PATH)
             st.rerun()
 
@@ -242,7 +200,7 @@ if df_check_bg is None or df_ord_bg is None:
 
 # ---- การคำนวณ ----
 if active_db_file:
-    with st.spinner("กำลังประมวลผลข้อมูล..."):
+    with st.spinner("🔄 กำลังประมวลผลข้อมูล (Processing Data)..."):
         df_check = df_check_bg.copy()
         xls_db = pd.ExcelFile(active_db_file)
         sheet_names_lower = [str(s).lower() for s in xls_db.sheet_names]
@@ -250,32 +208,25 @@ if active_db_file:
         # 1. อ่านชีทแรก
         df_db = pd.read_excel(xls_db, sheet_name=0) 
         if 'Material' in df_db.columns:
-            df_db['Material'] = df_db['Material'].astype(str).str.strip()
-            df_db['Material'] = df_db['Material'].str.replace(r';A[12]$', '', regex=True)
+            df_db['Material'] = df_db['Material'].astype(str).str.strip().str.replace(r';A[12]$', '', regex=True)
         stock_agg = df_db.groupby('Material')['Unrestricted'].sum().to_dict()
         
         # 2. อ่านชีท 'ord'
         if 'ord' in sheet_names_lower:
-            ord_sheet_name = xls_db.sheet_names[sheet_names_lower.index('ord')]
-            df_ord = pd.read_excel(xls_db, sheet_name=ord_sheet_name, header=0)
+            df_ord = pd.read_excel(xls_db, sheet_name=xls_db.sheet_names[sheet_names_lower.index('ord')], header=0)
         else:
             df_ord = df_ord_bg.copy()
             
         # 3. อ่านชีท 'fo'
         df_fo = pd.DataFrame()
-        max_fo_map = {}
-        max_ord_map = {}
+        max_fo_map, max_ord_map = {}, {}
         if 'fo' in sheet_names_lower:
-            fo_sheet_name = xls_db.sheet_names[sheet_names_lower.index('fo')]
-            df_fo = pd.read_excel(xls_db, sheet_name=fo_sheet_name, header=0)
-            
+            df_fo = pd.read_excel(xls_db, sheet_name=xls_db.sheet_names[sheet_names_lower.index('fo')], header=0)
             if not df_fo.empty and 'Material' in df_fo.columns:
                 fo_cols = [c for c in df_fo.columns if 'FO' in str(c).upper() and '(PCS)' in str(c).upper()]
                 ord_cols = [c for c in df_fo.columns if 'ORD' in str(c).upper() and '(PCS)' in str(c).upper()]
-                
                 df_fo['Max_FO'] = df_fo[fo_cols].max(axis=1) if fo_cols else 0
                 df_fo['Max_ORD'] = df_fo[ord_cols].max(axis=1) if ord_cols else 0
-                
                 df_fo['Material'] = df_fo['Material'].astype(str).str.strip()
                 max_fo_map = dict(zip(df_fo['Material'], df_fo['Max_FO']))
                 max_ord_map = dict(zip(df_fo['Material'], df_fo['Max_ORD']))
@@ -283,22 +234,17 @@ if active_db_file:
         # 4. อ่านชีท 'pro'
         machine_mapping = {}
         if 'pro' in sheet_names_lower:
-            pro_sheet_name = xls_db.sheet_names[sheet_names_lower.index('pro')]
-            df_pro = pd.read_excel(xls_db, sheet_name=pro_sheet_name, header=None)
+            df_pro = pd.read_excel(xls_db, sheet_name=xls_db.sheet_names[sheet_names_lower.index('pro')], header=None)
             if len(df_pro.columns) >= 3:
                 df_pro[0] = df_pro[0].astype(str).str.strip()
                 def extract_machine(val):
                     if pd.isna(val): return ""
                     val_str = str(val).strip()
-                    if val_str == '' or val_str.lower() == 'nan': return ""
                     parts = val_str.split('/')
-                    if len(parts) > 1: return parts[1].strip()
-                    return ""
+                    return parts[1].strip() if len(parts) > 1 else ""
                 
                 df_pro['extracted_machine'] = df_pro[2].apply(extract_machine)
-                df_pro_valid = df_pro[df_pro['extracted_machine'] != ""]
-                df_pro_unique = df_pro_valid.drop_duplicates(subset=[0, 'extracted_machine'])
-                machine_mapping = df_pro_unique.groupby(0)['extracted_machine'].apply(lambda x: ', '.join(filter(None, x))).to_dict()
+                machine_mapping = df_pro[df_pro['extracted_machine'] != ""].drop_duplicates(subset=[0, 'extracted_machine']).groupby(0)['extracted_machine'].apply(lambda x: ', '.join(filter(None, x))).to_dict()
         
         # --- คำนวณสต็อก ---
         df_check['fg'] = df_check['Material'].map(stock_agg).fillna(0)
@@ -314,19 +260,14 @@ if active_db_file:
             
             mat_orders_all = df_ord[df_ord['SAP Mat.'] == mat].copy()
             mat_orders_all['Outstd.Base Qty'] = pd.to_numeric(mat_orders_all['Outstd.Base Qty'], errors='coerce').fillna(0)
-            mat_orders_all = mat_orders_all[mat_orders_all['Outstd.Base Qty'] > 0]
+            mat_orders_all = mat_orders_all[mat_orders_all['Outstd.Base Qty'] > 0].sort_values('Dlv. Date')
             
             if not mat_orders_all.empty:
-                mat_orders_all = mat_orders_all.sort_values('Dlv. Date')
                 mat_orders_all['Running_Sum'] = mat_orders_all['Outstd.Base Qty'].cumsum()
                 total_stock = df_check.loc[df_check['Material'] == mat, 'Total'].values[0]
                 mat_orders_all['Balance'] = total_stock - mat_orders_all['Running_Sum']
-                
                 shortage = mat_orders_all[mat_orders_all['Balance'] < 0]
-                if not shortage.empty:
-                    date_insufficient[mat] = shortage.iloc[0]['Dlv. Date']
-                else:
-                    date_insufficient[mat] = pd.NaT
+                date_insufficient[mat] = shortage.iloc[0]['Dlv. Date'] if not shortage.empty else pd.NaT
             else:
                 date_insufficient[mat] = pd.NaT
                 
@@ -339,26 +280,19 @@ if active_db_file:
         df_check['Max ORD'] = df_check['Material'].astype(str).str.strip().map(max_ord_map).fillna(0)
         
         # --- จับคู่สถานะการผลิต ---
-        status_list = []
-        machine_list = []
+        status_list, machine_list = [], []
         for comp, mat in zip(df_check['Component'], df_check['Material']):
-            comp_str = str(comp).strip() if pd.notna(comp) else ""
-            mat_str = str(mat).strip() if pd.notna(mat) else ""
-            if comp_str.endswith('.0'): comp_str = comp_str[:-2]
-            if mat_str.endswith('.0'): mat_str = mat_str[:-2]
+            comp_str = str(comp).strip()[:-2] if str(comp).strip().endswith('.0') else str(comp).strip()
+            mat_str = str(mat).strip()[:-2] if str(mat).strip().endswith('.0') else str(mat).strip()
             
-            if comp_str != "" and comp_str in machine_mapping:
-                status_list.append('ผลิต')
-                machine_list.append(machine_mapping[comp_str])
-            elif mat_str != "" and mat_str in machine_mapping:
-                status_list.append('ผลิต')
-                machine_list.append(machine_mapping[mat_str])
+            if comp_str in machine_mapping:
+                status_list.append('ผลิต'), machine_list.append(machine_mapping[comp_str])
+            elif mat_str in machine_mapping:
+                status_list.append('ผลิต'), machine_list.append(machine_mapping[mat_str])
             else:
-                status_list.append('ไม่ได้ผลิต')
-                machine_list.append('-')
+                status_list.append('ไม่ได้ผลิต'), machine_list.append('-')
                 
-        df_check['status การผลิต'] = status_list
-        df_check['เครื่องจักร'] = machine_list
+        df_check['status การผลิต'], df_check['เครื่องจักร'] = status_list, machine_list
 
         # --- คำนวณ WIP Days ---
         df_check['order avg/day'] = pd.to_numeric(df_check['total fo+30%'], errors='coerce').fillna(0) / working_days_input
@@ -366,10 +300,7 @@ if active_db_file:
         
         # 🟢 ฟังก์ชันคำนวณ Status สัญลักษณ์สี
         def determine_status_emoji(wip, bo_dt):
-            diff = 9999
-            if pd.notna(bo_dt):
-                diff = (bo_dt - target_date_dt).days
-                
+            diff = (bo_dt - target_date_dt).days if pd.notna(bo_dt) else 9999
             if wip < 4 or diff < 4: return '1. 🔴'
             elif (4 <= wip <= 7) or (4 <= diff <= 7): return '2. 🟡'
             else: return '3. 🟠'
@@ -379,7 +310,7 @@ if active_db_file:
         df_check = df_check.sort_values(by='B/O Date', na_position='last')
         df_check['B/O Date Format'] = df_check['B/O Date'].dt.strftime('%Y-%m-%d').fillna('-')
         
-        # --- เตรียม Dataframe ทั้งหมด (แยก WIP และ FG ตามที่ต้องการ) ---
+        # --- เตรียม Dataframe ทั้งหมด (แยก WIP และ FG) ---
         balance_col_name = f'Balance ณ {target_date_dt.strftime("%d %b")}'
         display_df_all = pd.DataFrame({
             'Status': df_check['Status'], 
@@ -408,87 +339,64 @@ if active_db_file:
 
         # --- ตรวจสอบ Part หลุดแผน ---
         if not df_fo.empty and 'Material' in df_fo.columns:
-            fo_materials = df_fo['Material'].dropna().astype(str).str.strip().unique()
-            check_materials = df_check['Material'].dropna().astype(str).str.strip().unique()
-            missing_materials = [m for m in fo_materials if m not in check_materials and m != 'nan' and m != '']
-            if len(missing_materials) > 0:
-                st.markdown(f'''
-                    <div class="alert-box">⚠️ <b>แจ้งเตือนความเสี่ยงหลุดแผน:</b> พบ {len(missing_materials)} Part ที่มีใน Sheet <b>"fo"</b> แต่ไม่ได้นำมาคำนวณใน <b>"check dali wipday"</b></div>
-                ''', unsafe_allow_html=True)
-                with st.expander("👉 คลิกเพื่อดูรายการ Part ที่ตกหล่น"):
-                    cols_to_show = ['Material']
-                    if 'Description' in df_fo.columns: cols_to_show.append('Description')
-                    missing_df = df_fo[df_fo['Material'].astype(str).str.strip().isin(missing_materials)][cols_to_show].drop_duplicates(subset=['Material'])
-                    missing_df.columns = ['Part No. ที่ตกหล่น', 'รายละเอียด (Description)'][:len(cols_to_show)]
-                    st.dataframe(missing_df, use_container_width=True, hide_index=True)
+            fo_mats, chk_mats = set(df_fo['Material'].dropna().astype(str).str.strip()), set(df_check['Material'].dropna().astype(str).str.strip())
+            missing_mats = [m for m in fo_mats - chk_mats if m not in ['nan', '']]
+            if missing_mats:
+                st.markdown(f'<div class="alert-box">⚠️ <b>แจ้งเตือนความเสี่ยงหลุดแผน:</b> พบ {len(missing_mats)} Part ใน <b>"fo"</b> ที่ไม่มีใน <b>"check dali wipday"</b></div>', unsafe_allow_html=True)
+                with st.expander("👉 ดูรายการที่ตกหล่น"):
+                    st.dataframe(df_fo[df_fo['Material'].isin(missing_mats)][['Material'] + (['Description'] if 'Description' in df_fo.columns else [])].drop_duplicates(), use_container_width=True, hide_index=True)
 
-        # ---- สร้างการ์ดแสดงผล (ใช้ Native Metric แบบ Modern) ----
-        st.markdown("<div style='margin-bottom: -15px;'></div>", unsafe_allow_html=True)
+        # ---- สร้างการ์ดแสดงผล (Executive Metrics) ----
+        st.markdown("<div style='margin-bottom: -10px;'></div>", unsafe_allow_html=True)
         col_m1, col_m2, col_m3 = st.columns(3)
         with col_m1:
-            st.metric("Part ที่ต้องระวัง (B/O หรือ WIP<7)", f"{total_short_parts:,}")
+            st.metric("Critical Parts (B/O หรือ WIP<7)", f"{total_short_parts:,} รายการ")
         with col_m2:
-            st.metric("จำนวน Order ค้างส่ง (ชิ้น)", f"{total_orders_short:,}")
+            st.metric("Pending Orders (ยอดค้างส่ง)", f"{total_orders_short:,} ชิ้น")
         with col_m3:
-            st.metric("สถานะระบบ", "✨ ข้อมูลอัปเดตล่าสุด" if db_file is not None else "🕒 ข้อมูลบันทึกล่าสุด")
+            st.metric("System Status (ระบบ)", "✅ Online (Data Synced)" if db_file is not None else "⏳ Cached Data")
         st.markdown("<br>", unsafe_allow_html=True)
         
         # ==========================================
-        # 🎨 ระบบไฮไลท์สีคอลัมน์ตาราง
+        # 🎨 ระบบไฮไลท์สีคอลัมน์ตารางแบบคลีนๆ (Pastel Palette)
         # ==========================================
         def color_balance(val):
-            color = '#b91c1c' if isinstance(val, (int, float)) and val < 0 else '#10b981'
-            weight = 'bold' if isinstance(val, (int, float)) and val < 0 else 'normal'
-            return f'color: {color}; font-weight: {weight};'
+            return 'color: #991b1b; font-weight: bold;' if isinstance(val, (int, float)) and val < 0 else 'color: #065f46; font-weight: 500;'
         
         def color_wip(val):
             if pd.isna(val) or val == 999: return ''
             try:
                 v = float(val)
-                if v < 4: return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # 🔴
-                elif 4 <= v <= 7: return 'background-color: #fef08a; color: #854d0e; font-weight: bold;' # 🟡
-                else: return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # 🟠
-            except:
-                return ''
+                if v < 4: return 'background-color: #fef2f2; color: #991b1b; font-weight: bold;' # Soft Red
+                elif 4 <= v <= 7: return 'background-color: #fefce8; color: #b45309; font-weight: bold;' # Soft Yellow/Amber
+                else: return 'background-color: #fff7ed; color: #b45309; font-weight: 500;' # Soft Orange
+            except: return ''
 
         def color_bo_date(val):
             if str(val).strip() in ['-', 'OK', 'nan', 'NaT', '']: return ''
             try:
-                s_dt = pd.to_datetime(val)
-                diff = (s_dt - target_date_dt).days
-                if diff < 4: return 'background-color: #fee2e2; color: #b91c1c; font-weight: bold;' # 🔴
-                elif 4 <= diff <= 7: return 'background-color: #fef08a; color: #854d0e; font-weight: bold;' # 🟡
-                else: return 'background-color: #ffedd5; color: #c2410c; font-weight: bold;' # 🟠
-            except:
-                return ''
+                diff = (pd.to_datetime(val) - target_date_dt).days
+                if diff < 4: return 'background-color: #fef2f2; color: #991b1b; font-weight: bold;' # Soft Red
+                elif 4 <= diff <= 7: return 'background-color: #fefce8; color: #b45309; font-weight: bold;' # Soft Yellow/Amber
+                else: return 'background-color: #fff7ed; color: #b45309; font-weight: 500;' # Soft Orange
+            except: return ''
                 
         format_dict = {'WIP Day': '{:.2f}'}
 
         # --- ส่วนค้นหาหลาย Part พร้อมกัน ---
-        st.markdown("<h3 style='color:#1e293b; font-size:18px;'>🔍 ค้นหาสถานะ Part ข้อมูลทั้งหมด (เทียบหลายรายการได้)</h3>", unsafe_allow_html=True)
-        search_query = st.text_input("พิมพ์รหัส Part No. หรือ Material (คั่นด้วยลูกน้ำ ',' หากต้องการเทียบหลายตัว เช่น 1184469, BZ130)", "")
+        st.markdown("<h3 style='font-size:18px;'>🔍 ค้นหาข้อมูลเชิงลึก (Multi-Part Search)</h3>", unsafe_allow_html=True)
+        search_query = st.text_input("พิมพ์รหัส Part No. หรือ Material (คั่นด้วยลูกน้ำ ',' เพื่อดูเทียบกันหลายเบอร์)", "")
         
         if search_query:
             queries = [q.strip() for q in search_query.split(',') if q.strip()]
             if queries:
                 search_mask = pd.Series(False, index=display_df_all.index)
                 for q in queries:
-                    mask = display_df_all['Part No.'].astype(str).str.contains(q, case=False, na=False) | \
-                           display_df_all['Material'].astype(str).str.contains(q, case=False, na=False)
-                    search_mask = search_mask | mask
+                    search_mask |= display_df_all['Part No.'].astype(str).str.contains(q, case=False, na=False) | display_df_all['Material'].astype(str).str.contains(q, case=False, na=False)
                 
                 searched_df = display_df_all[search_mask]
                 if not searched_df.empty:
-                    try:
-                        styled_search = searched_df.style.map(color_balance, subset=[balance_col_name])\
-                                                    .map(color_wip, subset=['WIP Day'])\
-                                                    .map(color_bo_date, subset=['B/O Date'])\
-                                                    .format(format_dict)
-                    except AttributeError:
-                        styled_search = searched_df.style.applymap(color_balance, subset=[balance_col_name])\
-                                                    .applymap(color_wip, subset=['WIP Day'])\
-                                                    .applymap(color_bo_date, subset=['B/O Date'])\
-                                                    .format(format_dict)
+                    styled_search = searched_df.style.map(color_balance, subset=[balance_col_name]).map(color_wip, subset=['WIP Day']).map(color_bo_date, subset=['B/O Date']).format(format_dict)
                     st.dataframe(styled_search, use_container_width=True, hide_index=True)
                 else:
                     st.warning(f"❌ ไม่พบข้อมูล Part ที่ตรงกับ '{search_query}' ในฐานข้อมูล")
@@ -496,25 +404,23 @@ if active_db_file:
         st.markdown("<hr style='margin-top:20px; margin-bottom:20px;'>", unsafe_allow_html=True)
 
         # --- ส่วนแสดงกราฟและตาราง Part ที่ต้องระวัง ---
-        col_chart, col_table = st.columns([1, 2.5]) 
+        col_chart, col_table = st.columns([1.1, 2.5]) 
         
         with col_chart:
-            st.markdown("<h3 style='color:#1e293b; font-size:16px;'>แยกตามแผนก (SCHE)</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='font-size:17px;'>📊 สัดส่วนตามแผนก (SCHE)</h3>", unsafe_allow_html=True)
             if not df_short.empty:
                 sche_counts = df_short.groupby('SCHE').size().reset_index(name='count')
-                custom_colors = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899']
-                fig_sche = px.pie(sche_counts, values='count', names='SCHE', hole=0.55, color_discrete_sequence=custom_colors)
-                fig_sche.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=10, b=10, l=10, r=10), height=320, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                # โทนสีสวยหรู (Corporate Palette)
+                corp_colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#64748b', '#ec4899', '#0ea5e9']
+                fig_sche = px.pie(sche_counts, values='count', names='SCHE', hole=0.6, color_discrete_sequence=corp_colors)
+                fig_sche.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=0, l=0, r=0), height=320, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
                 fig_sche.update_traces(textposition='none', hoverinfo='label+percent')
                 st.plotly_chart(fig_sche, use_container_width=True)
                 
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                st.markdown("<h3 style='color:#1e293b; font-size:16px;'>สถานะการผลิต</h3>", unsafe_allow_html=True)
-                chart_data_status = df_short.groupby('status การผลิต').size().reset_index(name='count')
-                color_map = {'ผลิต': '#10b981', 'ไม่ได้ผลิต': '#ef4444'}
-                fig_status = px.pie(chart_data_status, values='count', names='status การผลิต', hole=0.55, color='status การผลิต', color_discrete_map=color_map)
-                fig_status.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=10, b=10, l=10, r=10), height=320, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                st.markdown("<br><h3 style='font-size:17px;'>⚙️ สถานะการผลิต</h3>", unsafe_allow_html=True)
+                chart_status = df_short.groupby('status การผลิต').size().reset_index(name='count')
+                fig_status = px.pie(chart_status, values='count', names='status การผลิต', hole=0.6, color='status การผลิต', color_discrete_map={'ผลิต': '#10b981', 'ไม่ได้ผลิต': '#ef4444'})
+                fig_status.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=0, l=0, r=0), height=320, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
                 fig_status.update_traces(textposition='none', hoverinfo='label+percent')
                 st.plotly_chart(fig_status, use_container_width=True)
             else:
@@ -523,25 +429,20 @@ if active_db_file:
         with col_table:
             c_header, c_btn = st.columns([2.5, 1])
             with c_header:
-                st.markdown("<h3 style='color:#1e293b; font-size:18px;'>รายการ Part ที่ติดลบ (B/O Date) หรือ WIP < 7 วัน</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='font-size:18px;'>⚠️ รายการ Part ที่น่าเป็นห่วง (B/O Date หรือ WIP < 7 วัน)</h3>", unsafe_allow_html=True)
             
             with c_btn:
-                excel_data = convert_df_to_excel(df_short)
-                st.download_button(label="📥 โหลดไฟล์ Excel", data=excel_data, file_name=f"Production_Shortage_{target_date_dt.strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                st.download_button(label="📥 โหลดไฟล์ Excel", data=convert_df_to_excel(df_short), file_name=f"Shortage_{target_date_dt.strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
             
-            try:
-                styled_df = df_short.style.map(color_balance, subset=[balance_col_name])\
-                                          .map(color_wip, subset=['WIP Day'])\
-                                          .map(color_bo_date, subset=['B/O Date'])\
-                                          .format(format_dict)
-            except AttributeError:
-                styled_df = df_short.style.applymap(color_balance, subset=[balance_col_name])\
-                                          .applymap(color_wip, subset=['WIP Day'])\
-                                          .applymap(color_bo_date, subset=['B/O Date'])\
-                                          .format(format_dict)
+            table_height = max(int((len(df_short) + 1) * 36) + 40, 300)
             
-            table_height = (len(df_short) + 1) * 35 + 10
-            if table_height < 250: table_height = 250
+            # จัดการสีแบบ Clean & Corporate
+            styled_df = df_short.style.map(color_balance, subset=[balance_col_name])\
+                                      .map(color_wip, subset=['WIP Day'])\
+                                      .map(color_bo_date, subset=['B/O Date'])\
+                                      .map(lambda x: 'color: #3b82f6; font-weight: 600;', subset=['Part No.', 'Material'])\
+                                      .map(lambda x: 'color: #ef4444; font-weight: 600;' if x > 0 else '', subset=['Orders'])\
+                                      .format(format_dict)
                 
             st.dataframe(
                 styled_df, 
@@ -557,4 +458,4 @@ if active_db_file:
             )
 
 else:
-    st.info("👋 กรุณาอัปโหลดไฟล์ Database รายวัน หรือใช้ข้อมูลที่บันทึกไว้ เพื่อเริ่มต้นวิเคราะห์ข้อมูล")
+    st.info("👋 ยินดีต้อนรับสู่ระบบ Executive Dashboard! กรุณาอัปโหลดไฟล์ Database รายวันเพื่อเริ่มต้นวิเคราะห์ข้อมูลแบบ Real-time ครับ")
